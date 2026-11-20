@@ -43,7 +43,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
 
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>(initialCurrency);
-  const [monthlyBudget, setMonthlyBudget] = useState('22,000');
+  const [monthlyBudget, setMonthlyBudget] = useState('');
   const [monthStart, setMonthStart] = useState<MonthStartOption>('1st');
   const [starterMode, setStarterMode] = useState<StarterMode>('simple');
 

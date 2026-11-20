@@ -7,6 +7,7 @@ import { X, Zap } from 'lucide-react-native';
 import { NoxMiniIcon } from '@/components/NoxMascot';
 import { useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
+import { toISODate } from '@/lib/dates';
 
 const SCANNED_SAMPLES = [
   {
@@ -34,7 +35,7 @@ const SCANNED_SAMPLES = [
 
 export default function ScanReceiptScreen() {
   const { selectedCurrency } = useOnboarding();
-  const { addTransaction } = useBudget();
+  const { today, addTransaction } = useBudget();
   const sym = selectedCurrency.symbol;
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -49,7 +50,7 @@ export default function ScanReceiptScreen() {
       category: currentScan.category,
       amount: currentScan.amount,
       type: 'expense',
-      dateLabel: 'Today',
+      date: toISODate(today),
       wallet: 'Cash wallet',
       note: `${currentScan.items} from receipt scan`,
     });

@@ -1,11 +1,19 @@
 import React, { useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react-native';
 import { NoxMiniIcon } from '@/components/NoxMascot';
 import { useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
+import { formatFullDate, formatRelativeDay } from '@/lib/dates';
 
 const CATEGORY_CYCLE = ['Food', 'Transport', 'Bills', 'Shopping', 'Health', 'Fun'];
 const WALLET_CYCLE = ['Cash wallet', 'E-wallet', 'Bank savings'];
@@ -14,7 +22,8 @@ const REPEAT_CYCLE = ['Never', 'Weekly', 'Monthly'];
 export default function EditTransactionScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { selectedCurrency } = useOnboarding();
-  const { transactions, updateTransaction, deleteTransaction } = useBudget();
+  const { today, transactions, updateTransaction, deleteTransaction } =
+    useBudget();
   const sym = selectedCurrency.symbol;
 
   const tx =
@@ -26,6 +35,7 @@ export default function EditTransactionScreen() {
   const [wallet, setWallet] = useState(tx?.wallet ?? 'Cash wallet');
   const [repeat, setRepeat] = useState(tx?.repeat ?? 'Never');
   const [note, setNote] = useState(tx?.note ?? 'With classmates after the exam');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   if (!tx) {
     return null;
@@ -46,17 +56,13 @@ export default function EditTransactionScreen() {
   };
 
   const handleDelete = () => {
-    Alert.alert('Delete expense', 'Remove this transaction from your device?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          deleteTransaction(tx.id);
-          router.back();
-        },
-      },
-    ]);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = () => {
+    setShowDeleteModal(false);
+    deleteTransaction(tx.id);
+    router.back();
   };
 
   const isIncome = tx.type === 'income';
@@ -116,7 +122,7 @@ export default function EditTransactionScreen() {
               <Text className="text-[14.5px] text-warm-gray">Date</Text>
               <View className="flex-row items-center gap-1.5">
                 <Text className="text-[14.5px] font-semibold text-charcoal">
-                  {tx.fullDate ?? 'Thu, Nov 19, 2026'}
+                  {formatFullDate(tx.date)}
                 </Text>
                 <ChevronRight size={16} color="#8A8880" strokeWidth={2} />
               </View>
@@ -194,6 +200,58 @@ export default function EditTransactionScreen() {
           </Pressable>
         </View>
       </View>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={showDeleteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDeleteModal(false)}
+      >
+        <View className="flex-1 bg-black/45 items-center justify-center px-6">
+          <View className="w-full bg-white rounded-3xl p-6">
+            <View className="w-12 h-12 rounded-2xl bg-[#FCEEE4] items-center justify-center mb-4">
+              <Trash2 size={22} color="#B85318" strokeWidth={2} />
+            </View>
+
+            <Text className="text-[20px] font-bold text-charcoal">
+              Delete this {tx.type}?
+            </Text>
+            <Text className="mt-2 text-[14px] leading-[20px] text-warm-gray">
+              {tx.title}, {isIncome ? '+' : '-'}
+              {sym}
+              {tx.amount.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{' '}
+              on {formatRelativeDay(tx.date, today)}. Your {category} budget gets{' '}
+              {sym}
+              {tx.amount.toLocaleString('en-US')} back. This can&apos;t be
+              undone.
+            </Text>
+
+            <View className="flex-row gap-3 mt-6">
+              <Pressable
+                onPress={() => setShowDeleteModal(false)}
+                className="flex-1 h-12 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
+              >
+                <Text className="text-[15px] font-semibold text-charcoal">
+                  Cancel
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={confirmDelete}
+                className="flex-1 h-12 rounded-2xl bg-[#B85318] items-center justify-center active:opacity-85"
+              >
+                <Text className="text-[15px] font-semibold text-white">
+                  Delete
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

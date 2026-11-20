@@ -16,6 +16,7 @@ import {
 import { NoxMiniIcon } from '@/components/NoxMascot';
 import { TransactionType, useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
+import { addDays, toISODate } from '@/lib/dates';
 
 const CATEGORIES = [
   'Food',
@@ -36,8 +37,14 @@ const KEYPAD_ROWS = [
 
 export default function AddTransactionModal() {
   const { selectedCurrency } = useOnboarding();
-  const { addTransaction, deleteTransaction, categories, wallets, daysLeft } =
-    useBudget();
+  const {
+    today,
+    addTransaction,
+    deleteTransaction,
+    categories,
+    wallets,
+    daysLeft,
+  } = useBudget();
   const sym = selectedCurrency.symbol;
 
   const [txType, setTxType] = useState<TransactionType>('expense');
@@ -85,12 +92,13 @@ export default function AddTransactionModal() {
 
   const handleSave = () => {
     if (numericAmount <= 0) return;
+    const txDate = dateLabel === 'Today' ? today : addDays(today, -1);
     const id = addTransaction({
       title: quickText.trim() || selectedCategory,
       category: txType === 'income' ? 'Income' : selectedCategory,
       amount: numericAmount,
       type: txType,
-      dateLabel,
+      date: toISODate(txDate),
       wallet: selectedWallet,
       note: note.trim() || undefined,
     });

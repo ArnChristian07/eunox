@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { Href, router } from 'expo-router';
 import { AlertTriangle, Plus } from 'lucide-react-native';
 import { NoxMiniIcon } from '@/components/NoxMascot';
-import { useBudget } from '@/context/BudgetContext';
+import { CategoryBudget, useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
+import { formatMoney } from '@/lib/format';
 
 function formatCompactMoney(amount: number, symbol: string): string {
   const hasDecimals = amount % 1 !== 0;
@@ -15,27 +16,70 @@ function formatCompactMoney(amount: number, symbol: string): string {
   })}`;
 }
 
+function unused(cat: CategoryBudget) {
+  return Math.max(0, Math.floor(cat.limit - cat.spent));
+}
+
+/** Category with the most unused budget, excluding `exclude`. */
+function findDonor(categories: CategoryBudget[], exclude: string, maxUsedPct = 100) {
+  return categories
+    .filter(
+      (c) =>
+        c.name !== exclude &&
+        c.limit > 0 &&
+        unused(c) > 0 &&
+        (c.spent / c.limit) * 100 < maxUsedPct
+    )
+    .sort((a, b) => unused(b) - unused(a))[0];
+}
+
 export default function BudgetsScreen() {
   const { selectedCurrency } = useOnboarding();
   const {
+    period,
     totalBudget,
     totalSpent,
     daysLeft,
-    categories,
+    expenseCategories: categories,
     moveBudget,
     raiseCategoryLimit,
-    movedSuggestion,
+    noxSuggestionsEnabled,
   } = useBudget();
+  const [lastMove, setLastMove] = useState<{
+    from: string;
+    to: string;
+    amount: number;
+  } | null>(null);
 
   const sym = selectedCurrency.symbol;
-  const overallPercent = Math.min(100, Math.round((totalSpent / totalBudget) * 100));
+  const overallPercent =
+    totalBudget > 0 ? Math.min(100, Math.round((totalSpent / totalBudget) * 100)) : 0;
 
-  const overBudgetCat = categories.find((c) => c.spent > c.limit);
-  const funCat = categories.find((c) => c.name === 'Fun');
+  const overBudgetCat = categories.find((c) => c.limit > 0 && c.spent > c.limit);
   const overAmount = overBudgetCat
     ? Math.ceil(overBudgetCat.spent - overBudgetCat.limit)
     : 0;
-  const funUnused = funCat ? Math.max(0, Math.floor(funCat.limit - funCat.spent)) : 0;
+  const overDonor = overBudgetCat ? findDonor(categories, overBudgetCat.name) : undefined;
+  const overMoveAmount = overDonor ? Math.min(overAmount, unused(overDonor)) : 0;
+
+  // Rebalance suggestion: a category close to its limit, and one barely used.
+  const needy = categories
+    .filter((c) => c.limit > 0 && c.spent / c.limit >= 0.8)
+    .sort((a, b) => b.spent / b.limit - a.spent / a.limit)[0];
+  const rebalanceDonor = needy ? findDonor(categories, needy.name, 50) : undefined;
+  const rebalanceAmount =
+    needy && rebalanceDonor
+      ? Math.floor(Math.min(unused(rebalanceDonor) * 0.5, needy.limit * 0.25) / 10) * 10
+      : 0;
+  const donorUsedPct =
+    rebalanceDonor && rebalanceDonor.limit > 0
+      ? Math.round((rebalanceDonor.spent / rebalanceDonor.limit) * 100)
+      : 0;
+
+  const handleMove = (from: string, to: string, amount: number) => {
+    moveBudget(from, to, amount);
+    setLastMove({ from, to, amount });
+  };
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-cream">
@@ -48,7 +92,7 @@ export default function BudgetsScreen() {
         <View className="flex-row items-center justify-between pt-2 pb-4">
           <View>
             <Text className="text-[13px] font-medium text-warm-gray">
-              November
+              {period.label}
             </Text>
             <Text className="text-[28px] font-bold tracking-tight text-charcoal">
               Budgets
@@ -71,28 +115,30 @@ export default function BudgetsScreen() {
               <AlertTriangle size={18} color="#B85318" strokeWidth={2.2} />
               <View className="flex-1">
                 <Text className="text-[15px] font-bold text-[#9A3F0D]">
-                  {overBudgetCat.name} is {sym}
-                  {overAmount.toLocaleString('en-US')} over budget
+                  {overBudgetCat.name} is {formatMoney(overAmount, sym, 0)} over
+                  budget
                 </Text>
                 <Text className="mt-1 text-[13.5px] leading-[19px] text-[#7D3A13]">
-                  Nox can cover it from Fun, where {sym}
-                  {funUnused.toLocaleString('en-US')} is still unused.
+                  {overDonor
+                    ? `Nox can cover ${overMoveAmount === overAmount ? 'it' : 'part of it'} from ${overDonor.name}, where ${formatMoney(unused(overDonor), sym, 0)} is still unused.`
+                    : 'No other category has budget to spare. You can raise the limit instead.'}
                 </Text>
               </View>
             </View>
 
             <View className="flex-row gap-2.5 mt-4">
-              <Pressable
-                onPress={() =>
-                  moveBudget('Fun', overBudgetCat.name, overAmount)
-                }
-                className="bg-charcoal rounded-full px-4 py-2.5 active:opacity-85"
-              >
-                <Text className="text-[13.5px] font-semibold text-white">
-                  Move {sym}
-                  {overAmount.toLocaleString('en-US')} from Fun
-                </Text>
-              </Pressable>
+              {overDonor ? (
+                <Pressable
+                  onPress={() =>
+                    handleMove(overDonor.name, overBudgetCat.name, overMoveAmount)
+                  }
+                  className="bg-charcoal rounded-full px-4 py-2.5 active:opacity-85"
+                >
+                  <Text className="text-[13.5px] font-semibold text-white">
+                    Move {formatMoney(overMoveAmount, sym, 0)} from {overDonor.name}
+                  </Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 onPress={() =>
                   raiseCategoryLimit(overBudgetCat.name, overBudgetCat.spent)
@@ -109,108 +155,131 @@ export default function BudgetsScreen() {
           <View className="bg-white border border-warm-border rounded-3xl p-5">
             <View className="flex-row items-baseline justify-between">
               <Text className="text-[26px] font-bold tracking-tight text-charcoal">
-                {sym}
-                {totalSpent.toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                {formatMoney(totalSpent, sym)}
               </Text>
               <Text className="text-[14px] text-warm-gray">
-                of {sym}
-                {totalBudget.toLocaleString('en-US')}
+                {totalBudget > 0
+                  ? `of ${formatMoney(totalBudget, sym, 0)}`
+                  : 'no monthly budget'}
               </Text>
             </View>
 
-            <View className="h-[7px] rounded-full bg-[#ECEAE2] mt-3.5 overflow-hidden">
-              <View
-                style={{ width: `${overallPercent}%` }}
-                className="h-full rounded-full bg-charcoal"
-              />
-            </View>
+            {totalBudget > 0 ? (
+              <View className="h-[7px] rounded-full bg-[#ECEAE2] mt-3.5 overflow-hidden">
+                <View
+                  style={{ width: `${overallPercent}%` }}
+                  className="h-full rounded-full bg-charcoal"
+                />
+              </View>
+            ) : null}
 
             <Text className="mt-2.5 text-[13px] text-warm-gray">
-              {overallPercent}% used · {daysLeft} days left
+              {totalBudget > 0 ? `${overallPercent}% used · ` : ''}
+              {daysLeft} {daysLeft === 1 ? 'day' : 'days'} left
             </Text>
           </View>
         )}
 
         {/* Category Breakdown */}
-        <View className="mt-5">
-          {categories.map((cat, index) => {
-            const pct = cat.limit > 0 ? Math.round((cat.spent / cat.limit) * 100) : 0;
-            const isOver = cat.spent > cat.limit;
-            const isWarning = pct >= 80;
-            const catOverAmt = Math.ceil(cat.spent - cat.limit);
+        {categories.length === 0 ? (
+          <View className="mt-5 bg-white border border-warm-border rounded-3xl p-5 items-center">
+            <Text className="text-[15.5px] font-semibold text-charcoal">
+              No categories yet
+            </Text>
+            <Text className="mt-1 text-center text-[13px] text-warm-gray">
+              Add categories to give each kind of spending its own limit.
+            </Text>
+            <Pressable
+              onPress={() => router.push('/categories' as Href)}
+              className="mt-4 bg-charcoal rounded-full px-4 py-2.5 active:opacity-85"
+            >
+              <Text className="text-[13.5px] font-semibold text-white">
+                Add a category
+              </Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View className="mt-5">
+            {categories.map((cat, index) => {
+              const hasLimit = cat.limit > 0;
+              const pct = hasLimit ? Math.round((cat.spent / cat.limit) * 100) : 0;
+              const isOver = hasLimit && cat.spent > cat.limit;
+              const isWarning = hasLimit && pct >= 80;
+              const catOverAmt = Math.ceil(cat.spent - cat.limit);
 
-            return (
-              <View
-                key={cat.id}
-                className={`py-3.5 ${
-                  index < categories.length - 1
-                    ? 'border-b border-warm-border'
-                    : ''
-                }`}
-              >
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-[15.5px] font-semibold text-charcoal">
-                    {cat.name}
-                  </Text>
-                  <Text className="text-[14.5px]">
-                    <Text
-                      className={`font-bold ${
-                        isOver ? 'text-[#B85318]' : 'text-charcoal'
-                      }`}
-                    >
-                      {formatCompactMoney(cat.spent, sym)}
+              return (
+                <Pressable
+                  key={cat.id}
+                  onPress={() => router.push('/categories' as Href)}
+                  className={`py-3.5 active:opacity-70 ${
+                    index < categories.length - 1
+                      ? 'border-b border-warm-border'
+                      : ''
+                  }`}
+                >
+                  <View className="flex-row items-center justify-between mb-2">
+                    <Text className="text-[15.5px] font-semibold text-charcoal">
+                      {cat.name}
                     </Text>
-                    <Text className="text-warm-gray">
-                      {' '}
-                      / {formatCompactMoney(cat.limit, sym)}
+                    <Text className="text-[14.5px]">
+                      <Text
+                        className={`font-bold ${
+                          isOver ? 'text-[#B85318]' : 'text-charcoal'
+                        }`}
+                      >
+                        {formatCompactMoney(cat.spent, sym)}
+                      </Text>
+                      <Text className="text-warm-gray">
+                        {hasLimit
+                          ? ` / ${formatCompactMoney(cat.limit, sym)}`
+                          : ' · no limit'}
+                      </Text>
                     </Text>
-                  </Text>
-                </View>
+                  </View>
 
-                <View className="h-[5px] rounded-full bg-[#ECEAE2] overflow-hidden">
-                  <View
-                    style={{ width: `${Math.min(100, pct)}%` }}
-                    className={`h-full rounded-full ${
-                      isWarning ? 'bg-[#D96B27]' : 'bg-charcoal'
-                    }`}
-                  />
-                </View>
+                  {hasLimit ? (
+                    <View className="h-[5px] rounded-full bg-[#ECEAE2] overflow-hidden">
+                      <View
+                        style={{ width: `${Math.min(100, pct)}%` }}
+                        className={`h-full rounded-full ${
+                          isWarning ? 'bg-[#D96B27]' : 'bg-charcoal'
+                        }`}
+                      />
+                    </View>
+                  ) : null}
 
-                {isOver ? (
-                  <Text className="mt-1.5 text-[12px] font-medium text-[#B85318]">
-                    {pct}% · {sym}
-                    {catOverAmt.toLocaleString('en-US')} over
-                  </Text>
-                ) : isWarning ? (
-                  <Text className="mt-1.5 text-[12px] font-medium text-[#B85318]">
-                    {pct}% used
-                  </Text>
-                ) : null}
-              </View>
-            );
-          })}
-        </View>
+                  {isOver ? (
+                    <Text className="mt-1.5 text-[12px] font-medium text-[#B85318]">
+                      {pct}% · {formatMoney(catOverAmt, sym, 0)} over
+                    </Text>
+                  ) : isWarning ? (
+                    <Text className="mt-1.5 text-[12px] font-medium text-[#B85318]">
+                      {pct}% used
+                    </Text>
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
 
         {/* Nox Rebalance Suggestion */}
-        {!overBudgetCat ? (
+        {noxSuggestionsEnabled && !overBudgetCat && (lastMove || rebalanceAmount > 0) ? (
           <View className="mt-4 bg-white border border-warm-border rounded-3xl p-4 flex-row items-center gap-3">
             <NoxMiniIcon size={34} />
             <Text className="flex-1 text-[13.5px] leading-[18px] text-charcoal">
-              {movedSuggestion
-                ? `Moved ${sym}800 from Fun to Food. Your budgets are updated.`
-                : `Move ${sym}800 from Fun to Food? You've only used 17% of Fun.`}
+              {lastMove
+                ? `Moved ${formatMoney(lastMove.amount, sym, 0)} from ${lastMove.from} to ${lastMove.to}. Your budgets are updated.`
+                : `Move ${formatMoney(rebalanceAmount, sym, 0)} from ${rebalanceDonor?.name} to ${needy?.name}? You've only used ${donorUsedPct}% of ${rebalanceDonor?.name}.`}
             </Text>
-            {!movedSuggestion ? (
+            {!lastMove && needy && rebalanceDonor ? (
               <Pressable
-                onPress={() => moveBudget('Fun', 'Food', 800)}
+                onPress={() =>
+                  handleMove(rebalanceDonor.name, needy.name, rebalanceAmount)
+                }
                 className="bg-nox-lime rounded-2xl px-4 py-2.5 active:opacity-80"
               >
-                <Text className="text-[14px] font-bold text-charcoal">
-                  Move
-                </Text>
+                <Text className="text-[14px] font-bold text-charcoal">Move</Text>
               </Pressable>
             ) : null}
           </View>

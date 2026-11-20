@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { ChevronDown, ChevronLeft, Search } from 'lucide-react-native';
 import { Transaction, useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
+import { formatGroupLabel } from '@/lib/dates';
 
 type FilterTab = 'all' | 'expense' | 'income';
 
@@ -12,7 +13,7 @@ const MONTH_FILTERS = ['November', 'October', 'All months'];
 
 export default function TransactionsScreen() {
   const { selectedCurrency } = useOnboarding();
-  const { transactions } = useBudget();
+  const { today, transactions } = useBudget();
   const sym = selectedCurrency.symbol;
 
   const [query, setQuery] = useState('');
@@ -40,7 +41,7 @@ export default function TransactionsScreen() {
     const map = new Map<string, { label: string; items: Transaction[]; net: number }>();
 
     for (const tx of filtered) {
-      const groupLabel = tx.dateGroup ?? tx.dateLabel;
+      const groupLabel = formatGroupLabel(tx.date, today);
       let group = map.get(groupLabel);
       if (!group) {
         group = { label: groupLabel, items: [], net: 0 };
@@ -52,7 +53,7 @@ export default function TransactionsScreen() {
     }
 
     return groups;
-  }, [filtered]);
+  }, [filtered, today]);
 
   return (
     <SafeAreaView className="flex-1 bg-cream">

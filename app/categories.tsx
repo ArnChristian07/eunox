@@ -3,6 +3,7 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  Switch,
   Text,
   TextInput,
   View,
@@ -51,6 +52,8 @@ export default function CategoriesScreen() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [catName, setCatName] = useState('');
   const [catLimit, setCatLimit] = useState('');
+  const [modalType, setModalType] = useState<'expense' | 'income'>('expense');
+  const [autoMovePast, setAutoMovePast] = useState(true);
 
   const openNewModal = () => {
     setEditingId(null);
@@ -248,39 +251,103 @@ export default function CategoriesScreen() {
         animationType="fade"
         onRequestClose={() => setModalVisible(false)}
       >
-        <View className="flex-1 bg-black/40 justify-end">
-          <View className="bg-cream rounded-t-3xl p-6 pb-8">
-            <View className="flex-row items-center justify-between mb-4">
-              <Text className="text-[18px] font-bold text-charcoal">
+        <View className="flex-1 bg-black/45 justify-end">
+          <View className="bg-cream rounded-t-3xl px-6 pt-3 pb-8">
+            <View className="w-10 h-1 rounded-full bg-[#D5D3CA] self-center mb-4" />
+
+            <View className="flex-row items-center justify-between mb-5">
+              <Text className="text-[20px] font-bold text-charcoal">
                 {editingId ? 'Edit category' : 'New category'}
               </Text>
-              <Pressable onPress={() => setModalVisible(false)}>
-                <X size={20} color="#141413" />
+              <Pressable
+                onPress={() => setModalVisible(false)}
+                className="w-9 h-9 rounded-xl bg-white border border-warm-border items-center justify-center"
+              >
+                <X size={18} color="#141413" />
               </Pressable>
             </View>
 
-            <TextInput
-              value={catName}
-              onChangeText={setCatName}
-              placeholder="Category name (e.g. Pets)"
-              placeholderTextColor="#8A8880"
-              className="bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-3"
-            />
-            <TextInput
-              value={catLimit}
-              onChangeText={setCatLimit}
-              keyboardType="numeric"
-              placeholder={`Monthly limit (${sym}2,000)`}
-              placeholderTextColor="#8A8880"
-              className="bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-5"
-            />
+            <View className="flex-row items-center gap-3 mb-4">
+              <View className="w-12 h-12 rounded-2xl bg-[#EAE8E1] items-center justify-center">
+                <Text className="text-[18px] font-bold text-charcoal">
+                  {(catName.trim().charAt(0) || 'C').toUpperCase()}
+                </Text>
+              </View>
+              <View className="flex-1">
+                <Text className="text-[12px] font-medium text-warm-gray mb-1">
+                  Name
+                </Text>
+                <TextInput
+                  value={catName}
+                  onChangeText={setCatName}
+                  placeholder="Coffee"
+                  placeholderTextColor="#8A8880"
+                  className="bg-white border-[1.5px] border-charcoal rounded-2xl px-4 h-11 text-[15px] font-medium text-charcoal"
+                />
+              </View>
+            </View>
+
+            {/* Expense / Income Toggle */}
+            <View className="flex-row bg-[#EAE8E1] p-1 rounded-2xl mb-4">
+              {(['expense', 'income'] as const).map((t) => {
+                const active = modalType === t;
+                return (
+                  <Pressable
+                    key={t}
+                    onPress={() => setModalType(t)}
+                    className={`flex-1 py-2.5 rounded-xl items-center ${
+                      active ? 'bg-white' : 'bg-transparent'
+                    }`}
+                  >
+                    <Text
+                      className={`text-[14px] font-semibold capitalize ${
+                        active ? 'text-charcoal' : 'text-warm-gray'
+                      }`}
+                    >
+                      {t}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text className="text-[12.5px] font-medium text-warm-gray mb-1.5">
+              Monthly limit (optional)
+            </Text>
+            <View className="flex-row items-center bg-white border border-warm-border rounded-2xl px-4 h-12 mb-4">
+              <Text className="text-[16px] font-bold text-charcoal mr-1">
+                {sym}
+              </Text>
+              <TextInput
+                value={catLimit}
+                onChangeText={setCatLimit}
+                keyboardType="numeric"
+                placeholder="800"
+                placeholderTextColor="#8A8880"
+                className="flex-1 text-[16px] font-semibold text-charcoal"
+              />
+            </View>
+
+            <View className="bg-white border border-warm-border rounded-2xl p-3.5 flex-row items-center gap-3 mb-5">
+              <NoxMiniIcon size={26} />
+              <Text className="flex-1 text-[13px] leading-[18px] text-charcoal">
+                Move past expenses that look like{' '}
+                {(catName.trim() || 'this').toLowerCase()} into it
+              </Text>
+              <Switch
+                value={autoMovePast}
+                onValueChange={setAutoMovePast}
+                trackColor={{ false: '#D9D7CE', true: '#141413' }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
 
             <Pressable
               onPress={handleSave}
-              className="bg-charcoal rounded-full h-12 items-center justify-center active:opacity-85"
+              className="bg-charcoal rounded-full h-[52px] items-center justify-center active:opacity-85"
             >
-              <Text className="text-white text-[15px] font-semibold">
-                {editingId ? 'Save changes' : 'Add category'}
+              <Text className="text-white text-[15.5px] font-semibold">
+                {editingId ? 'Save changes' : 'Create category'}
               </Text>
             </Pressable>
           </View>

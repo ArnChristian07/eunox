@@ -16,6 +16,8 @@ import {
   Check,
   ChevronLeft,
   Download,
+  FileText,
+  RotateCcw,
   ShieldCheck,
   Table,
   Upload,
@@ -24,35 +26,33 @@ import {
 import { useBudget } from '@/context/BudgetContext';
 
 export default function BackupScreen() {
-  const { transactions, categories, wallets, goals, bills } = useBudget();
+  const { transactions, lastBackup, exportSnapshot, recordBackup, restoreSnapshot } =
+    useBudget();
 
   const [passwordLock, setPasswordLock] = useState(true);
   const [weeklyReminder, setWeeklyReminder] = useState(true);
-  const [lastBackupLabel, setLastBackupLabel] = useState('Tue, Nov 17');
-  const [backupFileName, setBackupFileName] = useState(
-    'eunox-2026-11-17.eunox'
-  );
-  const [backupSizeKb, setBackupSizeKb] = useState(184);
+  const lastBackupLabel = lastBackup ? 'Today, just now' : 'Tue, Nov 17';
+  const backupFileName = lastBackup?.fileName ?? 'eunox-2026-11-17.eunox';
+  const backupSizeKb = lastBackup?.sizeKb ?? 184;
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [restorePassword, setRestorePassword] = useState('');
+  const [backupBeforeRestore, setBackupBeforeRestore] = useState(true);
 
   const handleBackupNow = async () => {
+    const snapshot = exportSnapshot();
     const payload = JSON.stringify({
-      version: '1.0',
+      ...snapshot,
       encrypted: passwordLock,
       exportedAt: new Date().toISOString(),
-      transactions,
-      categories,
-      wallets,
-      goals,
-      bills,
     });
     const kb = Math.max(1, Math.round(payload.length / 1024));
     const fileName = 'eunox-2026-11-20.eunox';
-    setLastBackupLabel('Today, just now');
-    setBackupFileName(fileName);
-    setBackupSizeKb(kb);
+    recordBackup({
+      at: new Date().toISOString(),
+      fileName,
+      sizeKb: kb,
+    });
     setStatusBanner(`Saved ${fileName} (${kb} KB)`);
 
     try {
@@ -69,7 +69,7 @@ export default function BackupScreen() {
     const header = 'Date,Title,Category,Type,Wallet,Amount,Note';
     const rows = transactions.map((t) =>
       [
-        t.fullDate ?? t.dateLabel,
+        t.date,
         `"${t.title.replace(/"/g, '""')}"`,
         t.category,
         t.type,
@@ -93,6 +93,8 @@ export default function BackupScreen() {
 
   const handleConfirmRestore = () => {
     if (passwordLock && !restorePassword.trim()) return;
+    const snap = exportSnapshot();
+    restoreSnapshot(snap);
     setRestorePassword('');
     setShowRestoreModal(false);
     setStatusBanner('Restored data from local backup');
@@ -245,40 +247,79 @@ export default function BackupScreen() {
         animationType="fade"
         onRequestClose={() => setShowRestoreModal(false)}
       >
-        <View className="flex-1 bg-black/40 justify-end">
-          <View className="bg-cream rounded-t-3xl p-6 pb-8">
-            <View className="flex-row items-center justify-between mb-3">
-              <Text className="text-[18px] font-bold text-charcoal">
-                Restore from {backupFileName}
-              </Text>
-              <Pressable onPress={() => setShowRestoreModal(false)}>
-                <X size={20} color="#141413" />
-              </Pressable>
+        <View className="flex-1 bg-black/45 items-center justify-center px-6">
+          <View className="w-full bg-white rounded-3xl p-6">
+            <View className="w-12 h-12 rounded-2xl bg-[#FCEEE4] items-center justify-center mb-4">
+              <RotateCcw size={22} color="#B85318" strokeWidth={2} />
             </View>
 
-            <Text className="text-[14px] text-warm-gray mb-4">
-              This will restore your local budget snapshot from {lastBackupLabel}.
+            <Text className="text-[20px] leading-[26px] font-bold text-charcoal">
+              Replace everything on this phone?
+            </Text>
+            <Text className="mt-2 text-[13.5px] leading-[19px] text-warm-gray">
+              This backup is from {lastBackupLabel}. The {transactions.length}{' '}
+              transactions you added after that will be gone.
             </Text>
 
+            <View className="mt-4 bg-[#F3F2EC] rounded-2xl p-3.5 flex-row items-center gap-3">
+              <FileText size={18} color="#66655E" strokeWidth={1.9} />
+              <View className="flex-1">
+                <Text className="text-[13.5px] font-semibold text-charcoal">
+                  {backupFileName}
+                </Text>
+                <Text className="text-[12px] text-warm-gray mt-0.5">
+                  {backupSizeKb} KB · {transactions.length} transactions
+                </Text>
+              </View>
+            </View>
+
             {passwordLock ? (
-              <TextInput
-                value={restorePassword}
-                onChangeText={setRestorePassword}
-                secureTextEntry
-                placeholder="Enter backup password"
-                placeholderTextColor="#8A8880"
-                className="bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-4"
-              />
+              <View className="mt-4">
+                <Text className="text-[12.5px] font-medium text-warm-gray mb-1.5">
+                  Backup password
+                </Text>
+                <TextInput
+                  value={restorePassword}
+                  onChangeText={setRestorePassword}
+                  secureTextEntry
+                  placeholder="••••••••••"
+                  placeholderTextColor="#8A8880"
+                  className="bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal"
+                />
+              </View>
             ) : null}
 
-            <Pressable
-              onPress={handleConfirmRestore}
-              className="bg-charcoal rounded-full h-12 items-center justify-center active:opacity-85"
-            >
-              <Text className="text-white text-[15px] font-semibold">
-                Restore backup
+            <View className="flex-row items-center justify-between mt-4">
+              <Text className="text-[13.5px] font-medium text-charcoal">
+                Back up today&apos;s data first
               </Text>
-            </Pressable>
+              <Switch
+                value={backupBeforeRestore}
+                onValueChange={setBackupBeforeRestore}
+                trackColor={{ false: '#D9D7CE', true: '#141413' }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            <View className="flex-row gap-3 mt-5">
+              <Pressable
+                onPress={() => setShowRestoreModal(false)}
+                className="flex-1 h-12 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
+              >
+                <Text className="text-[15px] font-semibold text-charcoal">
+                  Cancel
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={handleConfirmRestore}
+                className="flex-1 h-12 rounded-2xl bg-[#B85318] items-center justify-center active:opacity-85"
+              >
+                <Text className="text-[15px] font-semibold text-white">
+                  Restore
+                </Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>

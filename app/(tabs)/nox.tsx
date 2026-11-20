@@ -23,16 +23,19 @@ import { ArrowUp, History, Square } from 'lucide-react-native';
 import { NoxMiniIcon, NoxThinkingIcon } from '@/components/NoxMascot';
 import { useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
+import { answerQuestion, NoxReply } from '@/lib/nox';
 
-interface ChatMessage {
+interface ChatMessage extends Partial<NoxReply> {
   id: string;
   sender: 'user' | 'nox';
   text: string;
-  breakdown?: { label: string; amount: string; ratio: number }[];
-  actions?: { label: string; primary?: boolean }[];
 }
 
-const SUGGESTIONS = ['Where can I cut back?', 'Compare to October'];
+const SUGGESTIONS = [
+  'How much do I have left?',
+  'Where can I cut back?',
+  'Compare to last month',
+];
 
 function PulsingDot({ delay }: { delay: number }) {
   const opacity = useSharedValue(0.35);
@@ -65,47 +68,23 @@ function PulsingDot({ delay }: { delay: number }) {
 
 export default function NoxChatScreen() {
   const { selectedCurrency } = useOnboarding();
-  const { transactions, addGoal, goals } = useBudget();
+  const budget = useBudget();
+  const { period, periodTransactions, addGoal } = budget;
   const sym = selectedCurrency.symbol;
 
   const nextIdRef = useRef(1);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
-  const [reminderSet, setReminderSet] = useState(false);
-  const [wishlistAdded, setWishlistAdded] = useState(() =>
-    goals.some((g) => g.title === 'Jacket')
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [savedGoalMessageIds, setSavedGoalMessageIds] = useState<string[]>([]);
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    []
   );
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'm1',
-      sender: 'user',
-      text: 'How much did I spend on food this month?',
-    },
-    {
-      id: 'm2',
-      sender: 'nox',
-      text: `${sym}4,920 so far, 82% of your ${sym}6,000 food budget. Most of it went to eating out.`,
-      breakdown: [
-        { label: 'Eating out', amount: `${sym}3,150`, ratio: 0.64 },
-        { label: 'Groceries', amount: `${sym}1,770`, ratio: 0.36 },
-      ],
-    },
-    {
-      id: 'm3',
-      sender: 'user',
-      text: `Can I afford a ${sym}2,500 jacket?`,
-    },
-    {
-      id: 'm4',
-      sender: 'nox',
-      text: `Yes, but it's tight. You'd have ${sym}5,920 left for 11 days, about ${sym}538 a day instead of ${sym}765. Buying it on December 1 keeps this month comfortable.`,
-      actions: [
-        { label: 'Remind me Dec 1', primary: true },
-        { label: 'Add to wishlist' },
-      ],
-    },
-  ]);
 
   const stopThinking = () => {
     if (timerRef.current) {
@@ -128,27 +107,35 @@ export default function NoxChatScreen() {
       sender: 'user',
       text: trimmed,
     };
-
-    const replyText = trimmed.toLowerCase().includes('cut')
-      ? `Eating out (${sym}3,150) and weekend deliveries are your biggest levers. Cooking twice this week saves ~${sym}800.`
-      : trimmed.toLowerCase().includes('october')
-      ? `You're spending ${sym}1,204 less than October so far — down about 8% overall.`
-      : `Got it. Based on your ${sym}22,000 monthly budget, you still have ${sym}765 safe to spend today.`;
+    const reply = answerQuestion(trimmed, { sym, ...budget });
 
     setMessages((prev) => [...prev, userMsg]);
     if (!textToSend) setInput('');
     setIsThinking(true);
 
     timerRef.current = setTimeout(() => {
-      const noxMsg: ChatMessage = {
-        id: `n-${noxId}`,
-        sender: 'nox',
-        text: replyText,
-      };
-      setMessages((prev) => [...prev, noxMsg]);
+      setMessages((prev) => [
+        ...prev,
+        { id: `n-${noxId}`, sender: 'nox', ...reply },
+      ]);
       setIsThinking(false);
       timerRef.current = null;
-    }, 1100);
+    }, 600);
+  };
+
+  const handleSaveGoal = (msg: ChatMessage) => {
+    if (!msg.goal) return;
+    if (savedGoalMessageIds.includes(msg.id)) {
+      router.push('/savings-goals' as never);
+      return;
+    }
+    addGoal({
+      title: msg.goal.title,
+      subtitle: 'From your chat with Nox',
+      saved: 0,
+      target: msg.goal.target,
+    });
+    setSavedGoalMessageIds((prev) => [...prev, msg.id]);
   };
 
   return (
@@ -182,7 +169,7 @@ export default function NoxChatScreen() {
             </View>
           </View>
 
-          {!isThinking ? (
+          {!isThinking && messages.length > 0 ? (
             <Pressable
               onPress={() => setMessages([])}
               accessibilityLabel="New chat"
@@ -196,9 +183,22 @@ export default function NoxChatScreen() {
         {/* Messages */}
         <ScrollView
           className="flex-1 px-5"
-          contentContainerStyle={{ paddingVertical: 10, gap: 12 }}
+          contentContainerStyle={{ paddingVertical: 10, gap: 12, flexGrow: 1 }}
           showsVerticalScrollIndicator={false}
         >
+          {messages.length === 0 && !isThinking ? (
+            <View className="flex-1 items-center justify-center px-6">
+              <NoxMiniIcon size={56} />
+              <Text className="mt-4 text-[18px] font-bold text-charcoal">
+                Ask Nox about your money
+              </Text>
+              <Text className="mt-2 text-center text-[14px] leading-[20px] text-warm-gray">
+                Nox answers from the transactions on this phone. Nothing is sent
+                anywhere.
+              </Text>
+            </View>
+          ) : null}
+
           {messages.map((msg) =>
             msg.sender === 'user' ? (
               <Animated.View
@@ -245,42 +245,20 @@ export default function NoxChatScreen() {
                   </View>
                 ) : null}
 
-                {msg.actions ? (
+                {msg.goal ? (
                   <View className="flex-row gap-2.5 mt-4">
                     <Pressable
-                      onPress={() => setReminderSet((prev) => !prev)}
+                      onPress={() => handleSaveGoal(msg)}
                       className={`rounded-2xl px-4 py-2.5 ${
-                        reminderSet
-                          ? 'bg-charcoal'
+                        savedGoalMessageIds.includes(msg.id)
+                          ? 'bg-white border border-warm-border'
                           : 'bg-nox-lime'
                       }`}
                     >
-                      <Text
-                        className={`text-[13.5px] font-semibold ${
-                          reminderSet ? 'text-white' : 'text-charcoal'
-                        }`}
-                      >
-                        {reminderSet ? 'Reminder set · Dec 1' : 'Remind me Dec 1'}
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => {
-                        if (!wishlistAdded) {
-                          addGoal({
-                            title: 'Jacket',
-                            subtitle: 'From your chat with Nox · after Dec 1',
-                            saved: 0,
-                            target: 2500,
-                          });
-                          setWishlistAdded(true);
-                        } else {
-                          router.push('/savings-goals' as never);
-                        }
-                      }}
-                      className="rounded-2xl px-4 py-2.5 bg-white border border-warm-border"
-                    >
                       <Text className="text-[13.5px] font-semibold text-charcoal">
-                        {wishlistAdded ? 'View in goals' : 'Add to wishlist'}
+                        {savedGoalMessageIds.includes(msg.id)
+                          ? 'View in goals'
+                          : `Save for ${msg.goal.title}`}
                       </Text>
                     </Pressable>
                   </View>
@@ -303,7 +281,9 @@ export default function NoxChatScreen() {
               <View className="h-3 rounded-full bg-[#EAE8E1] w-full mb-2" />
               <View className="h-3 rounded-full bg-[#EAE8E1] w-2/3 mb-3" />
               <Text className="text-[12px] text-warm-gray">
-                Reading {transactions.length} transactions from November
+                Reading {periodTransactions.length}{' '}
+                {periodTransactions.length === 1 ? 'transaction' : 'transactions'}{' '}
+                from {period.label}
               </Text>
             </Animated.View>
           ) : null}

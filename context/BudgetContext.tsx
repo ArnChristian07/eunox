@@ -2,12 +2,27 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { useOnboarding } from './OnboardingContext';
+import {
+  addDays,
+  BudgetPeriod,
+  clampDay,
+  daysBetween,
+  getBudgetPeriod,
+  isWithin,
+  monthKey,
+  parseISODate,
+  startOfDay,
+  toISODate,
+} from '@/lib/dates';
 
 export type TransactionType = 'expense' | 'income' | 'transfer';
+export type CategoryType = 'expense' | 'income';
 
 export interface Transaction {
   id: string;
@@ -15,30 +30,43 @@ export interface Transaction {
   category: string;
   amount: number;
   type: TransactionType;
-  dateLabel: string;
-  dateGroup?: string;
-  fullDate?: string;
+  /** Local calendar date, YYYY-MM-DD. */
+  date: string;
+  /** ISO timestamp used to order entries recorded on the same day. */
+  createdAt: string;
   wallet: string;
   repeat?: string;
   note?: string;
   noxSource?: string;
 }
 
-export interface CategoryBudget {
+export type NewTransaction = Omit<Transaction, 'id' | 'createdAt'>;
+
+export interface CategoryRecord {
   id: string;
   name: string;
-  spent: number;
   limit: number;
-  type?: 'expense' | 'income';
+  type: CategoryType;
 }
 
-export interface WalletItem {
+/** Category with spending derived from the current budget period. */
+export interface CategoryBudget extends CategoryRecord {
+  spent: number;
+  count: number;
+}
+
+export interface WalletRecord {
   id: string;
   name: string;
   subtitle: string;
-  balance: number;
+  initialBalance: number;
   isDefault?: boolean;
   iconType: 'cash' | 'ewallet' | 'bank';
+}
+
+/** Wallet with its balance derived from transactions and transfers. */
+export interface WalletItem extends WalletRecord {
+  balance: number;
 }
 
 export interface TransferRecord {
@@ -46,7 +74,8 @@ export interface TransferRecord {
   from: string;
   to: string;
   amount: number;
-  dateLabel: string;
+  /** Local calendar date, YYYY-MM-DD. */
+  date: string;
 }
 
 export interface SavingsGoal {
@@ -59,43 +88,98 @@ export interface SavingsGoal {
 
 export interface RecurringBill {
   id: string;
-  month: string;
-  day: string;
   title: string;
   wallet: string;
   amount: number;
-  paid: boolean;
-  dueLabel?: string;
-  section: 'this' | 'next';
+  /** Day of month the bill is due (clamped to the month's last day). */
+  dueDay: number;
+  /** Month keys (YYYY-MM) in which the bill was paid. */
+  paidMonths: string[];
 }
 
-interface BudgetContextValue {
-  totalBudget: number;
-  totalSpent: number;
-  leftToSpend: number;
-  daysLeft: number;
-  safeToSpendToday: number;
+export interface BillStatus {
+  bill: RecurringBill;
+  dueDate: Date;
+  paid: boolean;
+  daysUntilDue: number;
+}
+
+export interface BackupInfo {
+  at: string;
+  fileName: string;
+  sizeKb: number;
+}
+
+export interface BudgetSnapshot {
+  version: number;
   transactions: Transaction[];
-  categories: CategoryBudget[];
-  wallets: WalletItem[];
+  categories: CategoryRecord[];
+  wallets: WalletRecord[];
   transfers: TransferRecord[];
   goals: SavingsGoal[];
   bills: RecurringBill[];
-  addTransaction: (tx: Omit<Transaction, 'id'>) => string;
-  updateTransaction: (id: string, updates: Partial<Transaction>) => void;
+}
+
+export function getBillStatus(bill: RecurringBill, now: Date = new Date()): BillStatus {
+  const today = startOfDay(now);
+  const dueDate = clampDay(today.getFullYear(), today.getMonth(), bill.dueDay);
+  return {
+    bill,
+    dueDate,
+    paid: bill.paidMonths.includes(monthKey(today)),
+    daysUntilDue: daysBetween(today, dueDate),
+  };
+}
+
+export function describeBillDue(status: BillStatus): string {
+  if (status.paid) return 'Paid';
+  const d = status.daysUntilDue;
+  if (d < 0) return `Overdue by ${-d} day${d === -1 ? '' : 's'}`;
+  if (d === 0) return 'Due today';
+  if (d === 1) return 'Due tomorrow';
+  return `Due in ${d} days`;
+}
+
+interface BudgetContextValue {
+  today: Date;
+  period: BudgetPeriod;
+  previousPeriod: BudgetPeriod;
+  totalBudget: number;
+  totalSpent: number;
+  totalIncome: number;
+  leftToSpend: number;
+  daysLeft: number;
+  safeToSpendToday: number;
+  /** All transactions, newest first. */
+  transactions: Transaction[];
+  /** Transactions inside the current budget period, newest first. */
+  periodTransactions: Transaction[];
+  categories: CategoryBudget[];
+  expenseCategories: CategoryBudget[];
+  incomeCategories: CategoryBudget[];
+  wallets: WalletItem[];
+  defaultWallet: WalletItem | undefined;
+  transfers: TransferRecord[];
+  goals: SavingsGoal[];
+  bills: RecurringBill[];
+  lastBackup: BackupInfo | null;
+  addTransaction: (tx: NewTransaction) => string;
+  updateTransaction: (id: string, updates: Partial<NewTransaction>) => void;
   deleteTransaction: (id: string) => void;
   moveBudget: (fromName: string, toName: string, amount: number) => void;
   raiseCategoryLimit: (categoryName: string, newLimit: number) => void;
-  addCategory: (name: string, limit: number) => void;
+  addCategory: (name: string, limit: number, type?: CategoryType) => void;
   updateCategory: (id: string, name: string, limit: number) => void;
   reorderCategory: (id: string, direction: 'up' | 'down') => void;
-  addWallet: (wallet: Omit<WalletItem, 'id'>) => void;
+  addWallet: (wallet: Omit<WalletRecord, 'id'>) => void;
   transferBetweenWallets: (fromId: string, toId: string, amount: number) => void;
   addGoal: (goal: Omit<SavingsGoal, 'id'>) => void;
   contributeToGoal: (goalId: string, amount: number) => void;
-  addBill: (bill: Omit<RecurringBill, 'id'>) => void;
+  addBill: (bill: Omit<RecurringBill, 'id' | 'paidMonths'>) => void;
   markBillPaid: (billId: string) => void;
-  movedSuggestion: boolean;
+  recordBackup: (info: BackupInfo) => void;
+  exportSnapshot: () => BudgetSnapshot;
+  restoreSnapshot: (data: unknown) => boolean;
   hideAmountsOnHome: boolean;
   setHideAmountsOnHome: (v: boolean) => void;
   noxSuggestionsEnabled: boolean;
@@ -104,286 +188,184 @@ interface BudgetContextValue {
   setAppLockEnabled: (v: boolean) => void;
 }
 
-const INITIAL_TRANSACTIONS: Transaction[] = [
-  {
-    id: '1',
-    title: 'Weekly groceries',
-    category: 'Food',
-    amount: 1240,
-    type: 'expense',
-    dateLabel: 'Today',
-    dateGroup: 'Today · Fri, Nov 20',
-    fullDate: 'Fri, Nov 20, 2026',
-    wallet: 'Cash wallet',
-    repeat: 'Never',
-  },
-  {
-    id: '2',
-    title: 'Jeepney and tricycle',
-    category: 'Transport',
-    amount: 86,
-    type: 'expense',
-    dateLabel: 'Today',
-    dateGroup: 'Today · Fri, Nov 20',
-    fullDate: 'Fri, Nov 20, 2026',
-    wallet: 'Cash wallet',
-    repeat: 'Never',
-  },
-  {
-    id: '3',
-    title: 'Lunch',
-    category: 'Food',
-    amount: 180,
-    type: 'expense',
-    dateLabel: 'Yesterday',
-    dateGroup: 'Yesterday · Thu, Nov 19',
-    fullDate: 'Thu, Nov 19, 2026',
-    wallet: 'Cash wallet',
-    repeat: 'Never',
-    note: 'With classmates after the exam',
-    noxSource: 'lunch 180 yesterday',
-  },
-  {
-    id: '4',
-    title: 'Freelance payment',
-    category: 'Income',
-    amount: 3500,
-    type: 'income',
-    dateLabel: 'Yesterday',
-    dateGroup: 'Yesterday · Thu, Nov 19',
-    fullDate: 'Thu, Nov 19, 2026',
-    wallet: 'E-wallet',
-    repeat: 'Never',
-  },
-  {
-    id: '5',
-    title: 'Mobile load',
-    category: 'Bills',
-    amount: 299,
-    type: 'expense',
-    dateLabel: 'Yesterday',
-    dateGroup: 'Yesterday · Thu, Nov 19',
-    fullDate: 'Thu, Nov 19, 2026',
-    wallet: 'E-wallet',
-    repeat: 'Never',
-  },
-  {
-    id: '6',
-    title: 'Electric bill',
-    category: 'Bills',
-    amount: 2150,
-    type: 'expense',
-    dateLabel: 'Wed, Nov 18',
-    dateGroup: 'Wed, Nov 18',
-    fullDate: 'Wed, Nov 18, 2026',
-    wallet: 'Bank savings',
-    repeat: 'Monthly',
-  },
-  {
-    id: '7',
-    title: 'Movie night',
-    category: 'Fun',
-    amount: 500,
-    type: 'expense',
-    dateLabel: 'Wed, Nov 18',
-    dateGroup: 'Wed, Nov 18',
-    fullDate: 'Wed, Nov 18, 2026',
-    wallet: 'E-wallet',
-    repeat: 'Never',
-  },
+const STARTER_EXPENSE_CATEGORIES = [
+  'Food',
+  'Transport',
+  'Bills',
+  'Shopping',
+  'Health',
+  'Fun',
 ];
+const STARTER_INCOME_CATEGORIES = ['Salary', 'Other income'];
 
-const INITIAL_CATEGORIES: CategoryBudget[] = [
-  { id: 'food', name: 'Food', spent: 4920, limit: 6000 },
-  { id: 'transport', name: 'Transport', spent: 1850, limit: 3000 },
-  { id: 'bills', name: 'Bills', spent: 4299, limit: 5000 },
-  { id: 'shopping', name: 'Shopping', spent: 1610, limit: 3500 },
-  { id: 'health', name: 'Health', spent: 400.5, limit: 1500 },
-  { id: 'fun', name: 'Fun', spent: 500, limit: 3000 },
-];
+const DEFAULT_WALLET: WalletRecord = {
+  id: 'w-cash',
+  name: 'Cash wallet',
+  subtitle: 'Default for new expenses',
+  initialBalance: 0,
+  isDefault: true,
+  iconType: 'cash',
+};
 
-const INITIAL_WALLETS: WalletItem[] = [
-  {
-    id: 'w1',
-    name: 'Cash wallet',
-    subtitle: 'Default for new expenses',
-    balance: 2340,
-    isDefault: true,
-    iconType: 'cash',
-  },
-  {
-    id: 'w2',
-    name: 'E-wallet',
-    subtitle: 'Load, bills, online',
-    balance: 6900,
-    iconType: 'ewallet',
-  },
-  {
-    id: 'w3',
-    name: 'Bank savings',
-    subtitle: 'Not counted in monthly budget',
-    balance: 22000,
-    iconType: 'bank',
-  },
-];
+function makeId(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
 
-const INITIAL_TRANSFERS: TransferRecord[] = [
-  {
-    id: 'tr-1',
-    from: 'Cash wallet',
-    to: 'E-wallet',
-    amount: 1000,
-    dateLabel: 'Tue, Nov 17',
-  },
-];
+function slug(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
 
-const INITIAL_GOALS: SavingsGoal[] = [
-  {
-    id: 'g1',
-    title: 'New laptop',
-    subtitle: 'By June 2027 · about ₱3,143 a month',
-    saved: 18000,
-    target: 40000,
-  },
-  {
-    id: 'g2',
-    title: 'Emergency fund',
-    subtitle: 'No deadline',
-    saved: 4000,
-    target: 10000,
-  },
-  {
-    id: 'g3',
-    title: 'Jacket',
-    subtitle: 'From your chat with Nox · after Dec 1',
-    saved: 0,
-    target: 2500,
-  },
-];
-
-const INITIAL_BILLS: RecurringBill[] = [
-  {
-    id: 'b1',
-    month: 'NOV',
-    day: '18',
-    title: 'Electric bill',
-    wallet: 'Bank savings',
-    amount: 2150,
-    paid: true,
-    section: 'this',
-  },
-  {
-    id: 'b2',
-    month: 'NOV',
-    day: '19',
-    title: 'Mobile load',
-    wallet: 'E-wallet',
-    amount: 299,
-    paid: true,
-    section: 'this',
-  },
-  {
-    id: 'b3',
-    month: 'NOV',
-    day: '25',
-    title: 'Home internet',
-    wallet: 'E-wallet',
-    amount: 1699,
-    paid: false,
-    dueLabel: 'Due in 5 days',
-    section: 'this',
-  },
-  {
-    id: 'b4',
-    month: 'NOV',
-    day: '28',
-    title: 'Music subscription',
-    wallet: 'E-wallet',
-    amount: 169,
-    paid: false,
-    dueLabel: 'Due in 8 days',
-    section: 'this',
-  },
-  {
-    id: 'b5',
-    month: 'DEC',
-    day: '1',
-    title: 'Dorm rent',
-    wallet: 'Bank savings',
-    amount: 4500,
-    paid: false,
-    dueLabel: 'Monthly',
-    section: 'next',
-  },
-];
+function sameName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
 
 const BudgetContext = createContext<BudgetContextValue | null>(null);
 
 export function BudgetProvider({ children }: { children: React.ReactNode }) {
-  const { monthlyBudget } = useOnboarding();
-  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
-  const [categories, setCategories] = useState<CategoryBudget[]>(INITIAL_CATEGORIES);
-  const [wallets, setWallets] = useState<WalletItem[]>(INITIAL_WALLETS);
-  const [transfers, setTransfers] = useState<TransferRecord[]>(INITIAL_TRANSFERS);
-  const [goals, setGoals] = useState<SavingsGoal[]>(INITIAL_GOALS);
-  const [bills, setBills] = useState<RecurringBill[]>(INITIAL_BILLS);
-  const [movedSuggestion, setMovedSuggestion] = useState(false);
+  const { monthlyBudget, monthStart, starterMode, hasCompletedOnboarding } =
+    useOnboarding();
+
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categoryRecords, setCategoryRecords] = useState<CategoryRecord[]>([]);
+  const [walletRecords, setWalletRecords] = useState<WalletRecord[]>([
+    DEFAULT_WALLET,
+  ]);
+  const [transfers, setTransfers] = useState<TransferRecord[]>([]);
+  const [goals, setGoals] = useState<SavingsGoal[]>([]);
+  const [bills, setBills] = useState<RecurringBill[]>([]);
+  const [lastBackup, setLastBackup] = useState<BackupInfo | null>(null);
   const [hideAmountsOnHome, setHideAmountsOnHome] = useState(false);
   const [noxSuggestionsEnabled, setNoxSuggestionsEnabled] = useState(true);
   const [appLockEnabled, setAppLockEnabled] = useState(true);
 
+  // Seed starter categories once, after the user picks "Simple" in onboarding.
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (!hasCompletedOnboarding || seededRef.current) return;
+    seededRef.current = true;
+    if (starterMode !== 'simple') return;
+    setCategoryRecords((prev) =>
+      prev.length > 0
+        ? prev
+        : [
+            ...STARTER_EXPENSE_CATEGORIES.map((name) => ({
+              id: `cat-${slug(name)}`,
+              name,
+              limit: 0,
+              type: 'expense' as const,
+            })),
+            ...STARTER_INCOME_CATEGORIES.map((name) => ({
+              id: `cat-${slug(name)}`,
+              name,
+              limit: 0,
+              type: 'income' as const,
+            })),
+          ]
+    );
+  }, [hasCompletedOnboarding, starterMode]);
+
+  // Re-evaluated every render so date-based values roll over at midnight.
+  const todayKey = toISODate(new Date());
+  const today = useMemo(() => parseISODate(todayKey), [todayKey]);
+  const period = useMemo(() => getBudgetPeriod(today, monthStart), [today, monthStart]);
+  const previousPeriod = useMemo(
+    () => getBudgetPeriod(addDays(period.start, -1), monthStart),
+    [period, monthStart]
+  );
+  const daysLeft = Math.max(1, daysBetween(today, period.end) + 1);
+
   const totalBudget = useMemo(() => {
-    const parsed = Number((monthlyBudget || '22000').replace(/[^0-9.]/g, ''));
-    return parsed > 0 ? parsed : 22000;
+    const parsed = Number((monthlyBudget || '').replace(/[^0-9.]/g, ''));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }, [monthlyBudget]);
 
+  const sortedTransactions = useMemo(
+    () =>
+      [...transactions].sort((a, b) =>
+        a.date === b.date
+          ? b.createdAt.localeCompare(a.createdAt)
+          : b.date.localeCompare(a.date)
+      ),
+    [transactions]
+  );
+
+  const periodTransactions = useMemo(
+    () =>
+      sortedTransactions.filter((t) => isWithin(t.date, period.start, period.end)),
+    [sortedTransactions, period]
+  );
+
   const totalSpent = useMemo(
-    () => categories.reduce((sum, cat) => sum + cat.spent, 0),
+    () =>
+      periodTransactions
+        .filter((t) => t.type === 'expense')
+        .reduce((sum, t) => sum + t.amount, 0),
+    [periodTransactions]
+  );
+  const totalIncome = useMemo(
+    () =>
+      periodTransactions
+        .filter((t) => t.type === 'income')
+        .reduce((sum, t) => sum + t.amount, 0),
+    [periodTransactions]
+  );
+  const leftToSpend = Math.max(0, totalBudget - totalSpent);
+  const safeToSpendToday =
+    totalBudget > 0 ? Math.floor(leftToSpend / daysLeft) : 0;
+
+  const categories = useMemo<CategoryBudget[]>(
+    () =>
+      categoryRecords.map((c) => {
+        const matching = periodTransactions.filter(
+          (t) => t.type === c.type && sameName(t.category, c.name)
+        );
+        return {
+          ...c,
+          spent: matching.reduce((sum, t) => sum + t.amount, 0),
+          count: matching.length,
+        };
+      }),
+    [categoryRecords, periodTransactions]
+  );
+  const expenseCategories = useMemo(
+    () => categories.filter((c) => c.type === 'expense'),
+    [categories]
+  );
+  const incomeCategories = useMemo(
+    () => categories.filter((c) => c.type === 'income'),
     [categories]
   );
 
-  const daysLeft = 11;
-  const leftToSpend = Math.max(0, totalBudget - totalSpent);
-  const safeToSpendToday = Math.round(leftToSpend / daysLeft);
+  const wallets = useMemo<WalletItem[]>(
+    () =>
+      walletRecords.map((w) => {
+        let balance = w.initialBalance;
+        for (const t of transactions) {
+          if (t.wallet !== w.name) continue;
+          if (t.type === 'income') balance += t.amount;
+          else if (t.type === 'expense') balance -= t.amount;
+        }
+        for (const tr of transfers) {
+          if (tr.from === w.name) balance -= tr.amount;
+          if (tr.to === w.name) balance += tr.amount;
+        }
+        return { ...w, balance };
+      }),
+    [walletRecords, transactions, transfers]
+  );
+  const defaultWallet = wallets.find((w) => w.isDefault) ?? wallets[0];
 
-  const addTransaction = useCallback((tx: Omit<Transaction, 'id'>): string => {
-    const id = Date.now().toString();
-    const newTx: Transaction = {
-      ...tx,
-      id,
-      dateGroup: tx.dateGroup ?? 'Today · Fri, Nov 20',
-      fullDate: tx.fullDate ?? 'Fri, Nov 20, 2026',
-      repeat: tx.repeat ?? 'Never',
-    };
-    setTransactions((prev) => [newTx, ...prev]);
-
-    if (tx.type === 'expense') {
-      setCategories((prev) =>
-        prev.map((cat) =>
-          cat.name.toLowerCase() === tx.category.toLowerCase()
-            ? { ...cat, spent: cat.spent + tx.amount }
-            : cat
-        )
-      );
-      setWallets((prev) =>
-        prev.map((w) =>
-          w.name === tx.wallet
-            ? { ...w, balance: Math.max(0, w.balance - tx.amount) }
-            : w
-        )
-      );
-    } else if (tx.type === 'income') {
-      setWallets((prev) =>
-        prev.map((w) =>
-          w.name === tx.wallet ? { ...w, balance: w.balance + tx.amount } : w
-        )
-      );
-    }
+  const addTransaction = useCallback((tx: NewTransaction): string => {
+    const id = makeId('tx');
+    setTransactions((prev) => [
+      { ...tx, id, createdAt: new Date().toISOString() },
+      ...prev,
+    ]);
     return id;
   }, []);
 
   const updateTransaction = useCallback(
-    (id: string, updates: Partial<Transaction>) => {
+    (id: string, updates: Partial<NewTransaction>) => {
       setTransactions((prev) =>
         prev.map((tx) => (tx.id === id ? { ...tx, ...updates } : tx))
       );
@@ -392,158 +374,230 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   );
 
   const deleteTransaction = useCallback((id: string) => {
-    setTransactions((prev) => {
-      const target = prev.find((tx) => tx.id === id);
-      if (target && target.type === 'expense') {
-        setCategories((cats) =>
-          cats.map((cat) =>
-            cat.name.toLowerCase() === target.category.toLowerCase()
-              ? { ...cat, spent: Math.max(0, cat.spent - target.amount) }
-              : cat
-          )
-        );
-        setWallets((ws) =>
-          ws.map((w) =>
-            w.name === target.wallet
-              ? { ...w, balance: w.balance + target.amount }
-              : w
-          )
-        );
-      }
-      return prev.filter((tx) => tx.id !== id);
-    });
+    setTransactions((prev) => prev.filter((tx) => tx.id !== id));
   }, []);
 
   const moveBudget = useCallback(
     (fromName: string, toName: string, amount: number) => {
-      setCategories((prev) =>
+      if (amount <= 0) return;
+      setCategoryRecords((prev) =>
         prev.map((cat) => {
-          if (cat.name === fromName) {
+          if (cat.type !== 'expense') return cat;
+          if (sameName(cat.name, fromName)) {
             return { ...cat, limit: Math.max(0, cat.limit - amount) };
           }
-          if (cat.name === toName) {
+          if (sameName(cat.name, toName)) {
             return { ...cat, limit: cat.limit + amount };
           }
           return cat;
         })
       );
-      setMovedSuggestion(true);
     },
     []
   );
 
   const raiseCategoryLimit = useCallback(
     (categoryName: string, newLimit: number) => {
-      setCategories((prev) =>
+      setCategoryRecords((prev) =>
         prev.map((cat) =>
-          cat.name === categoryName ? { ...cat, limit: newLimit } : cat
+          cat.type === 'expense' && sameName(cat.name, categoryName)
+            ? { ...cat, limit: Math.ceil(newLimit) }
+            : cat
         )
       );
     },
     []
   );
 
-  const addCategory = useCallback((name: string, limit: number) => {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    setCategories((prev) => [
-      ...prev,
-      { id: `cat-${Date.now()}`, name: trimmed, spent: 0, limit },
-    ]);
-  }, []);
+  const addCategory = useCallback(
+    (name: string, limit: number, type: CategoryType = 'expense') => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      setCategoryRecords((prev) =>
+        prev.some((c) => c.type === type && sameName(c.name, trimmed))
+          ? prev
+          : [...prev, { id: makeId('cat'), name: trimmed, limit, type }]
+      );
+    },
+    []
+  );
 
-  const updateCategory = useCallback((id: string, name: string, limit: number) => {
-    setCategories((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, name: name.trim() || c.name, limit } : c))
-    );
-  }, []);
+  const updateCategory = useCallback(
+    (id: string, name: string, limit: number) => {
+      const existing = categoryRecords.find((c) => c.id === id);
+      if (!existing) return;
+      const nextName = name.trim() || existing.name;
+      setCategoryRecords((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, name: nextName, limit } : c))
+      );
+      // Keep past transactions attached to the renamed category.
+      if (!sameName(nextName, existing.name)) {
+        setTransactions((prev) =>
+          prev.map((t) =>
+            t.type === existing.type && sameName(t.category, existing.name)
+              ? { ...t, category: nextName }
+              : t
+          )
+        );
+      }
+    },
+    [categoryRecords]
+  );
 
   const reorderCategory = useCallback((id: string, direction: 'up' | 'down') => {
-    setCategories((prev) => {
+    setCategoryRecords((prev) => {
       const idx = prev.findIndex((c) => c.id === id);
       if (idx === -1) return prev;
-      const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-      if (targetIdx < 0 || targetIdx >= prev.length) return prev;
+      const type = prev[idx].type;
+      const step = direction === 'up' ? -1 : 1;
+      let target = idx + step;
+      while (target >= 0 && target < prev.length && prev[target].type !== type) {
+        target += step;
+      }
+      if (target < 0 || target >= prev.length) return prev;
       const copy = [...prev];
-      const [item] = copy.splice(idx, 1);
-      copy.splice(targetIdx, 0, item);
+      [copy[idx], copy[target]] = [copy[target], copy[idx]];
       return copy;
     });
   }, []);
 
-  const addWallet = useCallback((wallet: Omit<WalletItem, 'id'>) => {
-    setWallets((prev) => [
+  const addWallet = useCallback((wallet: Omit<WalletRecord, 'id'>) => {
+    setWalletRecords((prev) => [
       ...prev,
-      { ...wallet, id: `w-${Date.now()}` },
+      {
+        ...wallet,
+        id: makeId('w'),
+        isDefault: prev.some((w) => w.isDefault) ? wallet.isDefault : true,
+      },
     ]);
   }, []);
 
   const transferBetweenWallets = useCallback(
     (fromId: string, toId: string, amount: number) => {
       if (fromId === toId || amount <= 0) return;
-      setWallets((prev) => {
-        const fromWallet = prev.find((w) => w.id === fromId);
-        const toWallet = prev.find((w) => w.id === toId);
-        if (!fromWallet || !toWallet) return prev;
-
-        setTransfers((tr) => [
-          {
-            id: `tr-${Date.now()}`,
-            from: fromWallet.name,
-            to: toWallet.name,
-            amount,
-            dateLabel: 'Today',
-          },
-          ...tr,
-        ]);
-
-        return prev.map((w) => {
-          if (w.id === fromId) return { ...w, balance: Math.max(0, w.balance - amount) };
-          if (w.id === toId) return { ...w, balance: w.balance + amount };
-          return w;
-        });
-      });
+      const fromWallet = walletRecords.find((w) => w.id === fromId);
+      const toWallet = walletRecords.find((w) => w.id === toId);
+      if (!fromWallet || !toWallet) return;
+      setTransfers((prev) => [
+        {
+          id: makeId('tr'),
+          from: fromWallet.name,
+          to: toWallet.name,
+          amount,
+          date: toISODate(new Date()),
+        },
+        ...prev,
+      ]);
     },
-    []
+    [walletRecords]
   );
 
   const addGoal = useCallback((goal: Omit<SavingsGoal, 'id'>) => {
-    setGoals((prev) => [...prev, { ...goal, id: `g-${Date.now()}` }]);
+    setGoals((prev) => [...prev, { ...goal, id: makeId('g') }]);
   }, []);
 
   const contributeToGoal = useCallback((goalId: string, amount: number) => {
+    if (amount <= 0) return;
     setGoals((prev) =>
       prev.map((g) =>
-        g.id === goalId
-          ? { ...g, saved: Math.min(g.target, g.saved + amount) }
-          : g
+        g.id === goalId ? { ...g, saved: Math.min(g.target, g.saved + amount) } : g
       )
     );
   }, []);
 
-  const addBill = useCallback((bill: Omit<RecurringBill, 'id'>) => {
-    setBills((prev) => [...prev, { ...bill, id: `b-${Date.now()}` }]);
+  const addBill = useCallback((bill: Omit<RecurringBill, 'id' | 'paidMonths'>) => {
+    setBills((prev) => [...prev, { ...bill, id: makeId('b'), paidMonths: [] }]);
   }, []);
 
-  const markBillPaid = useCallback((billId: string) => {
-    setBills((prev) =>
-      prev.map((b) => (b.id === billId ? { ...b, paid: true } : b))
-    );
+  const markBillPaid = useCallback(
+    (billId: string) => {
+      const bill = bills.find((b) => b.id === billId);
+      const key = monthKey(new Date());
+      if (!bill || bill.paidMonths.includes(key)) return;
+      setBills((prev) =>
+        prev.map((b) =>
+          b.id === billId ? { ...b, paidMonths: [...b.paidMonths, key] } : b
+        )
+      );
+      const billsCategory =
+        categoryRecords.find((c) => c.type === 'expense' && sameName(c.name, 'Bills'))
+          ?.name ?? 'Bills';
+      addTransaction({
+        title: bill.title,
+        category: billsCategory,
+        amount: bill.amount,
+        type: 'expense',
+        date: toISODate(new Date()),
+        wallet: bill.wallet,
+        repeat: 'Monthly',
+        note: 'Recurring bill',
+      });
+    },
+    [bills, categoryRecords, addTransaction]
+  );
+
+  const recordBackup = useCallback((info: BackupInfo) => {
+    setLastBackup(info);
+  }, []);
+
+  const exportSnapshot = useCallback(
+    (): BudgetSnapshot => ({
+      version: 2,
+      transactions,
+      categories: categoryRecords,
+      wallets: walletRecords,
+      transfers,
+      goals,
+      bills,
+    }),
+    [transactions, categoryRecords, walletRecords, transfers, goals, bills]
+  );
+
+  const restoreSnapshot = useCallback((data: unknown): boolean => {
+    if (!data || typeof data !== 'object') return false;
+    const snap = data as Partial<BudgetSnapshot>;
+    const arrays = [
+      snap.transactions,
+      snap.categories,
+      snap.wallets,
+      snap.transfers,
+      snap.goals,
+      snap.bills,
+    ];
+    if (!arrays.every(Array.isArray)) return false;
+    if ((snap.wallets as WalletRecord[]).length === 0) return false;
+    setTransactions(snap.transactions as Transaction[]);
+    setCategoryRecords(snap.categories as CategoryRecord[]);
+    setWalletRecords(snap.wallets as WalletRecord[]);
+    setTransfers(snap.transfers as TransferRecord[]);
+    setGoals(snap.goals as SavingsGoal[]);
+    setBills(snap.bills as RecurringBill[]);
+    seededRef.current = true;
+    return true;
   }, []);
 
   const value = useMemo<BudgetContextValue>(
     () => ({
+      today,
+      period,
+      previousPeriod,
       totalBudget,
       totalSpent,
+      totalIncome,
       leftToSpend,
       daysLeft,
       safeToSpendToday,
-      transactions,
+      transactions: sortedTransactions,
+      periodTransactions,
       categories,
+      expenseCategories,
+      incomeCategories,
       wallets,
+      defaultWallet,
       transfers,
       goals,
       bills,
+      lastBackup,
       addTransaction,
       updateTransaction,
       deleteTransaction,
@@ -558,7 +612,9 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       contributeToGoal,
       addBill,
       markBillPaid,
-      movedSuggestion,
+      recordBackup,
+      exportSnapshot,
+      restoreSnapshot,
       hideAmountsOnHome,
       setHideAmountsOnHome,
       noxSuggestionsEnabled,
@@ -567,16 +623,26 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       setAppLockEnabled,
     }),
     [
+      today,
+      period,
+      previousPeriod,
       totalBudget,
       totalSpent,
+      totalIncome,
       leftToSpend,
+      daysLeft,
       safeToSpendToday,
-      transactions,
+      sortedTransactions,
+      periodTransactions,
       categories,
+      expenseCategories,
+      incomeCategories,
       wallets,
+      defaultWallet,
       transfers,
       goals,
       bills,
+      lastBackup,
       addTransaction,
       updateTransaction,
       deleteTransaction,
@@ -591,7 +657,9 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       contributeToGoal,
       addBill,
       markBillPaid,
-      movedSuggestion,
+      recordBackup,
+      exportSnapshot,
+      restoreSnapshot,
       hideAmountsOnHome,
       noxSuggestionsEnabled,
       appLockEnabled,
