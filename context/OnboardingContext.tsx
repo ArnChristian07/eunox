@@ -1,11 +1,33 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { getLocales } from 'expo-localization';
 import { CURRENCIES, Currency } from '@/constants/currencies';
+import { loadJSON, saveJSON, STORAGE_KEYS } from '@/lib/storage';
 
 export type MonthStartOption = '1st' | '15th' | 'Last day' | 'Other';
 export type StarterMode = 'simple' | 'blank';
 
+/** The user's money settings, also included in backup files. */
+export interface MoneySettings {
+  currencyCode: string;
+  monthlyBudget: string;
+  monthStart: MonthStartOption;
+}
+
+interface PersistedOnboarding extends MoneySettings {
+  hasCompletedOnboarding: boolean;
+  starterMode: StarterMode;
+}
+
 interface OnboardingContextValue {
+  /** False until saved settings have been read from storage. */
+  hydrated: boolean;
   hasCompletedOnboarding: boolean;
   completeOnboarding: () => void;
   regionCurrencyCode: string;
@@ -17,7 +39,13 @@ interface OnboardingContextValue {
   setMonthStart: (option: MonthStartOption) => void;
   starterMode: StarterMode;
   setStarterMode: (mode: StarterMode) => void;
+  getMoneySettings: () => MoneySettings;
+  /** Applies settings from a restored backup and skips onboarding. */
+  applyMoneySettings: (settings: Partial<MoneySettings>) => void;
+  resetOnboarding: () => void;
 }
+
+const MONTH_START_OPTIONS: MonthStartOption[] = ['1st', '15th', 'Last day', 'Other'];
 
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
 
@@ -34,23 +62,95 @@ function detectRegionCurrencyCode(): string {
   return 'PHP';
 }
 
+function findCurrency(code: string | undefined): Currency | undefined {
+  return code ? CURRENCIES.find((c) => c.code === code) : undefined;
+}
+
 export function OnboardingProvider({ children }: { children: React.ReactNode }) {
   const regionCurrencyCode = useMemo(() => detectRegionCurrencyCode(), []);
   const initialCurrency = useMemo(
-    () => CURRENCIES.find((c) => c.code === regionCurrencyCode) ?? CURRENCIES[0],
+    () => findCurrency(regionCurrencyCode) ?? CURRENCIES[0],
     [regionCurrencyCode]
   );
 
+  const [hydrated, setHydrated] = useState(false);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>(initialCurrency);
   const [monthlyBudget, setMonthlyBudget] = useState('');
   const [monthStart, setMonthStart] = useState<MonthStartOption>('1st');
   const [starterMode, setStarterMode] = useState<StarterMode>('simple');
 
+  useEffect(() => {
+    let cancelled = false;
+    loadJSON<PersistedOnboarding>(STORAGE_KEYS.onboarding).then((saved) => {
+      if (cancelled) return;
+      if (saved) {
+        setHasCompletedOnboarding(!!saved.hasCompletedOnboarding);
+        const currency = findCurrency(saved.currencyCode);
+        if (currency) setSelectedCurrency(currency);
+        setMonthlyBudget(saved.monthlyBudget ?? '');
+        if (MONTH_START_OPTIONS.includes(saved.monthStart)) {
+          setMonthStart(saved.monthStart);
+        }
+        if (saved.starterMode === 'blank' || saved.starterMode === 'simple') {
+          setStarterMode(saved.starterMode);
+        }
+      }
+      setHydrated(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const data: PersistedOnboarding = {
+      hasCompletedOnboarding,
+      currencyCode: selectedCurrency.code,
+      monthlyBudget,
+      monthStart,
+      starterMode,
+    };
+    saveJSON(STORAGE_KEYS.onboarding, data);
+  }, [hydrated, hasCompletedOnboarding, selectedCurrency, monthlyBudget, monthStart, starterMode]);
+
+  const getMoneySettings = useCallback(
+    (): MoneySettings => ({
+      currencyCode: selectedCurrency.code,
+      monthlyBudget,
+      monthStart,
+    }),
+    [selectedCurrency, monthlyBudget, monthStart]
+  );
+
+  const applyMoneySettings = useCallback((settings: Partial<MoneySettings>) => {
+    const currency = findCurrency(settings.currencyCode);
+    if (currency) setSelectedCurrency(currency);
+    if (typeof settings.monthlyBudget === 'string') {
+      setMonthlyBudget(settings.monthlyBudget);
+    }
+    if (settings.monthStart && MONTH_START_OPTIONS.includes(settings.monthStart)) {
+      setMonthStart(settings.monthStart);
+    }
+    setHasCompletedOnboarding(true);
+  }, []);
+
+  const resetOnboarding = useCallback(() => {
+    setHasCompletedOnboarding(false);
+    setSelectedCurrency(initialCurrency);
+    setMonthlyBudget('');
+    setMonthStart('1st');
+    setStarterMode('simple');
+  }, [initialCurrency]);
+
+  const completeOnboarding = useCallback(() => setHasCompletedOnboarding(true), []);
+
   const value = useMemo<OnboardingContextValue>(
     () => ({
+      hydrated,
       hasCompletedOnboarding,
-      completeOnboarding: () => setHasCompletedOnboarding(true),
+      completeOnboarding,
       regionCurrencyCode,
       selectedCurrency,
       setSelectedCurrency,
@@ -60,14 +160,22 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
       setMonthStart,
       starterMode,
       setStarterMode,
+      getMoneySettings,
+      applyMoneySettings,
+      resetOnboarding,
     }),
     [
+      hydrated,
       hasCompletedOnboarding,
+      completeOnboarding,
       regionCurrencyCode,
       selectedCurrency,
       monthlyBudget,
       monthStart,
       starterMode,
+      getMoneySettings,
+      applyMoneySettings,
+      resetOnboarding,
     ]
   );
 
