@@ -120,19 +120,22 @@ export default function ScanReceiptScreen() {
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        getPermission().catch(() => {});
+        getPermission()
+          .then((res) => {
+            if (!isMountedRef.current) return;
+            if (!res.granted) {
+              setCameraReady(false);
+              setTorch(false);
+            }
+          })
+          .catch(() => {});
       }
     });
     return () => sub.remove();
   }, [getPermission]);
 
-  // Reset camera readiness/torch if permission is revoked while this screen is open.
-  useEffect(() => {
-    if (!hasPermission) {
-      setCameraReady(false);
-      setTorch(false);
-    }
-  }, [hasPermission]);
+  const effectiveCameraReady = hasPermission && cameraReady;
+  const effectiveTorch = hasPermission && torch;
 
   const setPhoto = (uri: string | null) => {
     deletePhoto(photoUriRef.current);
@@ -308,7 +311,7 @@ export default function ScanReceiptScreen() {
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
           facing="back"
           pictureSize={pictureSize}
-          enableTorch={torch}
+          enableTorch={effectiveTorch}
           onCameraReady={handleCameraReady}
           onMountError={handleCameraMountError}
         />
@@ -358,7 +361,7 @@ export default function ScanReceiptScreen() {
               permissionLoading={permission === null}
               hasPermission={hasPermission}
               canAskAgain={permission?.canAskAgain !== false}
-              cameraReady={cameraReady}
+              cameraReady={effectiveCameraReady}
               error={error}
               onRequestPermission={() => {
                 requestPermission().catch(() => {});

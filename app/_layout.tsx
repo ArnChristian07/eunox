@@ -119,7 +119,9 @@ function RootLayoutNav() {
       ) : (
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Protected guard={hasCompletedOnboarding}>
+            {/* Explicit redirectTo: without it, Expo Router falls back to the first
+                unguarded route alphabetically (`backup`) on a fresh install. */}
+            <Stack.Protected guard={hasCompletedOnboarding} redirectTo="/onboarding">
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen
                 name="add-transaction"
@@ -138,7 +140,7 @@ function RootLayoutNav() {
               />
               <Stack.Screen name="lock" options={{ headerShown: false }} />
             </Stack.Protected>
-            <Stack.Protected guard={!hasCompletedOnboarding}>
+            <Stack.Protected guard={!hasCompletedOnboarding} redirectTo="/">
               <Stack.Screen name="onboarding/index" options={{ headerShown: false }} />
             </Stack.Protected>
             <Stack.Screen name="onboarding/currency" options={{ headerShown: false }} />

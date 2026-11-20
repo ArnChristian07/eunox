@@ -37,8 +37,15 @@ import { formatFullDate, formatTimeAgo, toISODate } from '@/lib/dates';
 type Banner = { kind: 'ok' | 'error'; text: string };
 
 export default function BackupScreen() {
-  const { transactions, lastBackup, exportSnapshot, recordBackup, restoreSnapshot } =
-    useBudget();
+  const {
+    transactions,
+    lastBackup,
+    storageError,
+    clearStorageError,
+    exportSnapshot,
+    recordBackup,
+    restoreSnapshot,
+  } = useBudget();
   const { hasCompletedOnboarding, getMoneySettings, applyMoneySettings } =
     useOnboarding();
 
@@ -49,15 +56,33 @@ export default function BackupScreen() {
 
   const hasLocalData = transactions.length > 0;
 
-  const backUpNow = async (): Promise<boolean> => {
+  const backUpNow = async (persistCopy = false): Promise<boolean> => {
     const payload = JSON.stringify(buildBackup(exportSnapshot(), getMoneySettings()));
     try {
-      const saved = await saveAndShareFile(backupFileName(), payload, 'application/json');
-      recordBackup({ at: new Date().toISOString(), ...saved });
-      setBanner({ kind: 'ok', text: `Saved ${saved.fileName} (${saved.sizeKb} KB)` });
+      const saved = await saveAndShareFile(
+        backupFileName(),
+        payload,
+        'application/json',
+        { persistCopy }
+      );
+      if (saved.cancelled) {
+        setBanner({ kind: 'error', text: "Backup wasn't saved" });
+        return false;
+      }
+      recordBackup({ at: new Date().toISOString(), fileName: saved.fileName, sizeKb: saved.sizeKb });
+      setBanner({
+        kind: 'ok',
+        text: `Backup ready (${saved.sizeKb} KB) — make sure you saved ${saved.fileName}`,
+      });
       return true;
-    } catch {
-      setBanner({ kind: 'error', text: "Couldn't create the backup file" });
+    } catch (err) {
+      const detail = err instanceof Error && err.message ? err.message : null;
+      setBanner({
+        kind: 'error',
+        text: detail && detail.includes('sharing')
+          ? detail
+          : "Couldn't create or share the backup file",
+      });
       return false;
     }
   };
@@ -75,17 +100,21 @@ export default function BackupScreen() {
     }
     setBusy('csv');
     try {
-      await saveAndShareFile(
+      const saved = await saveAndShareFile(
         `eunox-transactions-${toISODate(new Date())}.csv`,
         buildCsv(transactions),
         'text/csv'
       );
-      setBanner({
-        kind: 'ok',
-        text: `Exported ${transactions.length} transactions as CSV`,
-      });
+      if (saved.cancelled) {
+        setBanner({ kind: 'error', text: "CSV export wasn't saved" });
+      } else {
+        setBanner({
+          kind: 'ok',
+          text: `CSV ready for ${transactions.length} transactions`,
+        });
+      }
     } catch {
-      setBanner({ kind: 'error', text: "Couldn't create the CSV file" });
+      setBanner({ kind: 'error', text: "Couldn't create or share the CSV file" });
     }
     setBusy(null);
   };
@@ -100,7 +129,10 @@ export default function BackupScreen() {
       } else if (result.status === 'invalid') {
         setBanner({
           kind: 'error',
-          text: `${result.fileName} isn't a Eunox backup file`,
+          text:
+            result.reason === 'too-large'
+              ? `${result.fileName} is too large to be a Eunox backup file`
+              : `${result.fileName} isn't a Eunox backup file`,
         });
       }
     } catch {
@@ -113,7 +145,7 @@ export default function BackupScreen() {
     if (!picked) return;
     setBusy('restore');
     if (backupBeforeRestore && hasLocalData) {
-      const ok = await backUpNow();
+      const ok = await backUpNow(true);
       if (!ok) {
         setBusy(null);
         return;
@@ -127,7 +159,12 @@ export default function BackupScreen() {
       return;
     }
     const wasOnboarding = !hasCompletedOnboarding;
-    applyMoneySettings(picked.data.settings ?? {});
+    const rawSettings = picked.data.settings;
+    const safeSettings =
+      rawSettings && typeof rawSettings === 'object' && !Array.isArray(rawSettings)
+        ? rawSettings
+        : {};
+    applyMoneySettings(safeSettings);
     setBanner({
       kind: 'ok',
       text: `Restored ${picked.data.transactions.length} transactions`,
@@ -140,9 +177,12 @@ export default function BackupScreen() {
     }
   };
 
-  const pickedDate = picked?.data.exportedAt
-    ? formatFullDate(toISODate(new Date(picked.data.exportedAt)))
-    : 'an unknown date';
+  const pickedDate = (() => {
+    const raw = picked?.data.exportedAt;
+    if (typeof raw !== 'string') return 'an unknown date';
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? 'an unknown date' : formatFullDate(toISODate(d));
+  })();
 
   return (
     <SafeAreaView className="flex-1 bg-cream">
@@ -164,6 +204,20 @@ export default function BackupScreen() {
             Backup and restore
           </Text>
         </View>
+
+        {storageError ? (
+          <View className="mb-4 rounded-2xl px-4 py-3 flex-row items-center justify-between bg-[#FCEEE4]">
+            <View className="flex-row items-center gap-2 flex-1 pr-2">
+              <AlertTriangle size={16} color="#B85318" strokeWidth={2.2} />
+              <Text className="text-[13.5px] font-semibold text-[#B85318]">
+                {storageError}
+              </Text>
+            </View>
+            <Pressable onPress={clearStorageError} accessibilityLabel="Dismiss">
+              <X size={16} color="#141413" />
+            </Pressable>
+          </View>
+        ) : null}
 
         {banner ? (
           <View

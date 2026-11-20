@@ -7,6 +7,10 @@ import type { MoneySettings } from '@/context/OnboardingContext';
 import { toISODate } from '@/lib/dates';
 
 export const BACKUP_APP_ID = 'eunox';
+/** Max backup file size accepted before reading into JS memory (5 MB). */
+export const MAX_BACKUP_FILE_BYTES = 5 * 1024 * 1024;
+/** Safe upper bound for Android Binder IPC when falling back to plain-text Share.share. */
+const MAX_TEXT_SHARE_BYTES = 512 * 1024;
 
 export interface BackupFile extends BudgetSnapshot {
   app: typeof BACKUP_APP_ID;
@@ -17,6 +21,12 @@ export interface BackupFile extends BudgetSnapshot {
 export interface SavedFile {
   fileName: string;
   sizeKb: number;
+  cancelled?: boolean;
+}
+
+export interface SaveAndShareOptions {
+  /** Also keep a local safety copy in persistent app storage (Paths.document). */
+  persistCopy?: boolean;
 }
 
 export interface PickedBackup {
@@ -71,12 +81,13 @@ function downloadOnWeb(fileName: string, contents: string, mimeType: string) {
 
 /**
  * Writes the file and opens the share sheet so the user can save it to Files,
- * a drive, or send it to themselves. Resolves once the file exists.
+ * a drive, or send it to themselves. Resolves once the share sheet closes.
  */
 export async function saveAndShareFile(
   fileName: string,
   contents: string,
-  mimeType: string
+  mimeType: string,
+  options?: SaveAndShareOptions
 ): Promise<SavedFile> {
   const sizeKb = Math.max(1, Math.round(contents.length / 1024));
 
@@ -88,12 +99,31 @@ export async function saveAndShareFile(
   const file = new File(Paths.cache, fileName);
   if (file.exists) file.delete();
   file.create();
-  await file.write(contents);
+  file.write(contents);
+
+  if (options?.persistCopy) {
+    try {
+      const safetyCopy = new File(Paths.document, fileName);
+      if (safetyCopy.exists) safetyCopy.delete();
+      safetyCopy.create();
+      safetyCopy.write(contents);
+    } catch {
+      // Non-fatal: cache file is still ready for sharing.
+    }
+  }
 
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(file.uri, { mimeType, dialogTitle: fileName });
-  } else {
-    await Share.share({ title: fileName, message: contents });
+    return { fileName, sizeKb };
+  }
+
+  if (Platform.OS === 'android' && contents.length > MAX_TEXT_SHARE_BYTES) {
+    throw new Error('File sharing is unavailable on this device for large backups.');
+  }
+
+  const shareResult = await Share.share({ title: fileName, message: contents });
+  if (shareResult.action === Share.dismissedAction) {
+    return { fileName, sizeKb, cancelled: true };
   }
   return { fileName, sizeKb };
 }
@@ -105,8 +135,9 @@ export function parseBackup(text: string): BackupFile | null {
   } catch {
     return null;
   }
-  if (!data || typeof data !== 'object') return null;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
   const snap = data as Partial<BackupFile>;
+  if (snap.app !== BACKUP_APP_ID) return null;
   const arrays = [
     snap.transactions,
     snap.categories,
@@ -123,7 +154,21 @@ export function parseBackup(text: string): BackupFile | null {
 export type PickResult =
   | { status: 'picked'; backup: PickedBackup }
   | { status: 'cancelled' }
-  | { status: 'invalid'; fileName: string };
+  | {
+      status: 'invalid';
+      fileName: string;
+      reason?: 'too-large' | 'unreadable' | 'invalid-format';
+    };
+
+function deleteCachedFile(uri: string) {
+  if (Platform.OS === 'web') return;
+  try {
+    const file = new File(uri);
+    if (file.exists) file.delete();
+  } catch {
+    // Ignore cleanup errors on temp cache files.
+  }
+}
 
 export async function pickBackupFile(): Promise<PickResult> {
   const result = await DocumentPicker.getDocumentAsync({
@@ -134,24 +179,38 @@ export async function pickBackupFile(): Promise<PickResult> {
   if (result.canceled || result.assets.length === 0) return { status: 'cancelled' };
 
   const asset = result.assets[0];
-  let text: string;
   try {
-    text =
-      Platform.OS === 'web'
-        ? await (asset.file ? asset.file.text() : fetch(asset.uri).then((r) => r.text()))
-        : await new File(asset.uri).text();
-  } catch {
-    return { status: 'invalid', fileName: asset.name };
-  }
+    if (typeof asset.size === 'number' && asset.size > MAX_BACKUP_FILE_BYTES) {
+      return { status: 'invalid', fileName: asset.name, reason: 'too-large' };
+    }
 
-  const data = parseBackup(text);
-  if (!data) return { status: 'invalid', fileName: asset.name };
-  return {
-    status: 'picked',
-    backup: {
-      fileName: asset.name,
-      sizeKb: Math.max(1, Math.round((asset.size ?? text.length) / 1024)),
-      data,
-    },
-  };
+    let text: string;
+    try {
+      text =
+        Platform.OS === 'web'
+          ? await (asset.file ? asset.file.text() : fetch(asset.uri).then((r) => r.text()))
+          : await new File(asset.uri).text();
+    } catch {
+      return { status: 'invalid', fileName: asset.name, reason: 'unreadable' };
+    }
+
+    if (text.length > MAX_BACKUP_FILE_BYTES) {
+      return { status: 'invalid', fileName: asset.name, reason: 'too-large' };
+    }
+
+    const data = parseBackup(text);
+    if (!data) {
+      return { status: 'invalid', fileName: asset.name, reason: 'invalid-format' };
+    }
+    return {
+      status: 'picked',
+      backup: {
+        fileName: asset.name,
+        sizeKb: Math.max(1, Math.round((asset.size ?? text.length) / 1024)),
+        data,
+      },
+    };
+  } finally {
+    deleteCachedFile(asset.uri);
+  }
 }

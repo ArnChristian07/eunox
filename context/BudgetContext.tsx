@@ -313,12 +313,25 @@ function matchesWallet(
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+function isValidISODate(value: string): boolean {
+  if (!ISO_DATE_RE.test(value)) return false;
+  const [y, m, d] = value.split('-').map(Number);
+  if (m < 1 || m > 12 || d < 1 || d > 31) return false;
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+}
+
+function optionalNonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+}
+
 function sanitizeWallets(raw: unknown[]): WalletRecord[] {
   const valid: WalletRecord[] = [];
+  const seenIds = new Set<string>();
   for (const item of raw) {
-    if (!item || typeof item !== 'object') continue;
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
     const w = item as Partial<WalletRecord>;
-    if (typeof w.id !== 'string' || !w.id.trim()) continue;
+    if (typeof w.id !== 'string' || !w.id.trim() || seenIds.has(w.id)) continue;
     if (typeof w.name !== 'string' || !w.name.trim()) continue;
     const initialBalance =
       typeof w.initialBalance === 'number' && isValidFiniteAmount(w.initialBalance)
@@ -328,6 +341,7 @@ function sanitizeWallets(raw: unknown[]): WalletRecord[] {
       w.iconType === 'cash' || w.iconType === 'ewallet' || w.iconType === 'bank'
         ? w.iconType
         : 'cash';
+    seenIds.add(w.id);
     valid.push({
       id: w.id,
       name: w.name.trim(),
@@ -343,21 +357,85 @@ function sanitizeWallets(raw: unknown[]): WalletRecord[] {
   return valid;
 }
 
+function sanitizeCategories(raw: unknown[]): CategoryRecord[] {
+  const valid: CategoryRecord[] = [];
+  const seenIds = new Set<string>();
+  for (const item of raw) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const c = item as Partial<CategoryRecord>;
+    if (typeof c.id !== 'string' || !c.id.trim() || seenIds.has(c.id)) continue;
+    if (typeof c.name !== 'string' || !c.name.trim()) continue;
+    if (
+      typeof c.limit !== 'number' ||
+      !isValidFiniteAmount(c.limit) ||
+      c.limit < 0
+    ) {
+      continue;
+    }
+    if (c.type !== 'expense' && c.type !== 'income') continue;
+    seenIds.add(c.id);
+    valid.push({
+      id: c.id,
+      name: c.name.trim(),
+      limit: roundMoney(c.limit),
+      type: c.type,
+    });
+  }
+  return valid;
+}
+
+function sanitizeGoals(raw: unknown[]): SavingsGoal[] {
+  const valid: SavingsGoal[] = [];
+  const seenIds = new Set<string>();
+  for (const item of raw) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const g = item as Partial<SavingsGoal>;
+    if (typeof g.id !== 'string' || !g.id.trim() || seenIds.has(g.id)) continue;
+    if (typeof g.title !== 'string' || !g.title.trim()) continue;
+    if (
+      typeof g.saved !== 'number' ||
+      !isValidFiniteAmount(g.saved) ||
+      g.saved < 0
+    ) {
+      continue;
+    }
+    if (
+      typeof g.target !== 'number' ||
+      !isValidFiniteAmount(g.target) ||
+      g.target < 0
+    ) {
+      continue;
+    }
+    seenIds.add(g.id);
+    valid.push({
+      id: g.id,
+      title: g.title.trim(),
+      subtitle: typeof g.subtitle === 'string' ? g.subtitle : '',
+      saved: roundMoney(g.saved),
+      target: roundMoney(g.target),
+    });
+  }
+  return valid;
+}
+
 function sanitizeTransactions(
   raw: unknown[],
   wallets: readonly WalletRecord[]
 ): Transaction[] {
   const valid: Transaction[] = [];
+  const seenIds = new Set<string>();
   for (const item of raw) {
-    if (!item || typeof item !== 'object') continue;
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
     const t = item as Partial<Transaction>;
-    if (typeof t.id !== 'string' || !t.id.trim()) continue;
+    if (typeof t.id !== 'string' || !t.id.trim() || seenIds.has(t.id)) continue;
     if (typeof t.title !== 'string') continue;
     if (typeof t.category !== 'string') continue;
     if (typeof t.amount !== 'number' || !isValidPositiveAmount(t.amount)) continue;
-    if (t.type !== 'expense' && t.type !== 'income' && t.type !== 'transfer') continue;
-    if (typeof t.date !== 'string' || !ISO_DATE_RE.test(t.date)) continue;
-    const matched = resolveWallet(wallets, t.walletId, t.wallet);
+    if (t.type !== 'expense' && t.type !== 'income') continue;
+    if (typeof t.date !== 'string' || !isValidISODate(t.date)) continue;
+    const safeWalletId = optionalNonEmptyString(t.walletId);
+    const matched = resolveWallet(wallets, safeWalletId, typeof t.wallet === 'string' ? t.wallet : undefined);
+    seenIds.add(t.id);
     valid.push({
       id: t.id,
       title: t.title,
@@ -367,7 +445,7 @@ function sanitizeTransactions(
       date: t.date,
       createdAt: typeof t.createdAt === 'string' ? t.createdAt : new Date().toISOString(),
       wallet: matched?.name ?? (typeof t.wallet === 'string' ? t.wallet : wallets[0]?.name ?? ''),
-      walletId: matched?.id ?? t.walletId,
+      walletId: matched?.id ?? safeWalletId,
       repeat: typeof t.repeat === 'string' ? t.repeat : undefined,
       note: typeof t.note === 'string' ? t.note : undefined,
       noxSource: typeof t.noxSource === 'string' ? t.noxSource : undefined,
@@ -381,22 +459,26 @@ function sanitizeTransfers(
   wallets: readonly WalletRecord[]
 ): TransferRecord[] {
   const valid: TransferRecord[] = [];
+  const seenIds = new Set<string>();
   for (const item of raw) {
-    if (!item || typeof item !== 'object') continue;
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
     const tr = item as Partial<TransferRecord>;
-    if (typeof tr.id !== 'string' || !tr.id.trim()) continue;
+    if (typeof tr.id !== 'string' || !tr.id.trim() || seenIds.has(tr.id)) continue;
     if (typeof tr.amount !== 'number' || !isValidPositiveAmount(tr.amount)) continue;
-    if (typeof tr.date !== 'string' || !ISO_DATE_RE.test(tr.date)) continue;
-    const fromW = resolveWallet(wallets, tr.fromId, tr.from);
-    const toW = resolveWallet(wallets, tr.toId, tr.to);
+    if (typeof tr.date !== 'string' || !isValidISODate(tr.date)) continue;
+    const safeFromId = optionalNonEmptyString(tr.fromId);
+    const safeToId = optionalNonEmptyString(tr.toId);
+    const fromW = resolveWallet(wallets, safeFromId, typeof tr.from === 'string' ? tr.from : undefined);
+    const toW = resolveWallet(wallets, safeToId, typeof tr.to === 'string' ? tr.to : undefined);
     if (!fromW && typeof tr.from !== 'string') continue;
     if (!toW && typeof tr.to !== 'string') continue;
+    seenIds.add(tr.id);
     valid.push({
       id: tr.id,
       from: fromW?.name ?? (tr.from as string),
       to: toW?.name ?? (tr.to as string),
-      fromId: fromW?.id ?? tr.fromId,
-      toId: toW?.id ?? tr.toId,
+      fromId: fromW?.id ?? safeFromId,
+      toId: toW?.id ?? safeToId,
       amount: roundMoney(tr.amount),
       date: tr.date,
       createdAt: typeof tr.createdAt === 'string' ? tr.createdAt : undefined,
@@ -410,19 +492,22 @@ function sanitizeBills(
   wallets: readonly WalletRecord[]
 ): RecurringBill[] {
   const valid: RecurringBill[] = [];
+  const seenIds = new Set<string>();
   for (const item of raw) {
-    if (!item || typeof item !== 'object') continue;
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
     const b = item as Partial<RecurringBill>;
-    if (typeof b.id !== 'string' || !b.id.trim()) continue;
+    if (typeof b.id !== 'string' || !b.id.trim() || seenIds.has(b.id)) continue;
     if (typeof b.title !== 'string') continue;
     if (typeof b.amount !== 'number' || !isValidPositiveAmount(b.amount)) continue;
-    if (typeof b.dueDay !== 'number' || b.dueDay < 1 || b.dueDay > 31) continue;
-    const matched = resolveWallet(wallets, b.walletId, b.wallet);
+    if (typeof b.dueDay !== 'number' || !Number.isFinite(b.dueDay) || b.dueDay < 1 || b.dueDay > 31) continue;
+    const safeWalletId = optionalNonEmptyString(b.walletId);
+    const matched = resolveWallet(wallets, safeWalletId, typeof b.wallet === 'string' ? b.wallet : undefined);
+    seenIds.add(b.id);
     valid.push({
       id: b.id,
       title: b.title,
       wallet: matched?.name ?? (typeof b.wallet === 'string' ? b.wallet : wallets[0]?.name ?? ''),
-      walletId: matched?.id ?? b.walletId,
+      walletId: matched?.id ?? safeWalletId,
       amount: roundMoney(b.amount),
       dueDay: Math.round(b.dueDay),
       paidMonths: Array.isArray(b.paidMonths)
@@ -492,11 +577,15 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         if (Array.isArray(saved.transactions)) {
           setTransactions(sanitizeTransactions(saved.transactions, effectiveWallets));
         }
-        if (Array.isArray(saved.categories)) setCategoryRecords(saved.categories);
+        if (Array.isArray(saved.categories)) {
+          setCategoryRecords(sanitizeCategories(saved.categories));
+        }
         if (Array.isArray(saved.transfers)) {
           setTransfers(sanitizeTransfers(saved.transfers, effectiveWallets));
         }
-        if (Array.isArray(saved.goals)) setGoals(saved.goals);
+        if (Array.isArray(saved.goals)) {
+          setGoals(sanitizeGoals(saved.goals));
+        }
         if (Array.isArray(saved.bills)) {
           setBills(sanitizeBills(saved.bills, effectiveWallets));
         }
@@ -1106,7 +1195,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   );
 
   const restoreSnapshot = useCallback((data: unknown): boolean => {
-    if (!data || typeof data !== 'object') return false;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
     const snap = data as Partial<BudgetSnapshot>;
     const arrays = [
       snap.transactions,
@@ -1118,33 +1207,40 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     ];
     if (!arrays.every(Array.isArray)) return false;
 
-    const cleanWallets = sanitizeWallets(snap.wallets as unknown[]);
-    if (cleanWallets.length === 0) return false;
+    const rawWallets = snap.wallets as unknown[];
+    const rawCategories = snap.categories as unknown[];
+    const rawGoals = snap.goals as unknown[];
+    const rawTransactions = snap.transactions as unknown[];
+    const rawTransfers = snap.transfers as unknown[];
+    const rawBills = snap.bills as unknown[];
 
-    const cleanTransactions = sanitizeTransactions(
-      snap.transactions as unknown[],
-      cleanWallets
-    );
-    const cleanTransfers = sanitizeTransfers(
-      snap.transfers as unknown[],
-      cleanWallets
-    );
-    const cleanBills = sanitizeBills(snap.bills as unknown[], cleanWallets);
+    const cleanWallets = sanitizeWallets(rawWallets);
+    if (cleanWallets.length === 0 || cleanWallets.length !== rawWallets.length) {
+      return false;
+    }
 
-    // Reject snapshots with corrupted/invalid financial records rather than partial import.
+    const cleanCategories = sanitizeCategories(rawCategories);
+    const cleanGoals = sanitizeGoals(rawGoals);
+    const cleanTransactions = sanitizeTransactions(rawTransactions, cleanWallets);
+    const cleanTransfers = sanitizeTransfers(rawTransfers, cleanWallets);
+    const cleanBills = sanitizeBills(rawBills, cleanWallets);
+
+    // Reject snapshots with corrupted/invalid records rather than partial import.
     if (
-      cleanTransactions.length !== (snap.transactions as unknown[]).length ||
-      cleanTransfers.length !== (snap.transfers as unknown[]).length ||
-      cleanBills.length !== (snap.bills as unknown[]).length
+      cleanCategories.length !== rawCategories.length ||
+      cleanGoals.length !== rawGoals.length ||
+      cleanTransactions.length !== rawTransactions.length ||
+      cleanTransfers.length !== rawTransfers.length ||
+      cleanBills.length !== rawBills.length
     ) {
       return false;
     }
 
     setTransactions(cleanTransactions);
-    setCategoryRecords(snap.categories as CategoryRecord[]);
+    setCategoryRecords(cleanCategories);
     setWalletRecords(cleanWallets);
     setTransfers(cleanTransfers);
-    setGoals(snap.goals as SavingsGoal[]);
+    setGoals(cleanGoals);
     setBills(cleanBills);
     seededRef.current = true;
     setSeeded(true);
