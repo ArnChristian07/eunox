@@ -5,11 +5,19 @@ import { router } from 'expo-router';
 import { ChevronDown, ChevronLeft, Search } from 'lucide-react-native';
 import { Transaction, useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
-import { formatGroupLabel } from '@/lib/dates';
+import { formatGroupLabel, monthKey, monthName, parseISODate } from '@/lib/dates';
 
 type FilterTab = 'all' | 'expense' | 'income';
 
-const MONTH_FILTERS = ['November', 'October', 'All months'];
+const ALL_MONTHS = 'all';
+
+/** "November", or "November 2025" when it isn't the current year. */
+function monthLabel(key: string, today: Date): string {
+  if (key === ALL_MONTHS) return 'All months';
+  const d = parseISODate(`${key}-01`);
+  const name = monthName(d);
+  return d.getFullYear() === today.getFullYear() ? name : `${name} ${d.getFullYear()}`;
+}
 
 export default function TransactionsScreen() {
   const { selectedCurrency } = useOnboarding();
@@ -18,11 +26,27 @@ export default function TransactionsScreen() {
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterTab>('all');
-  const [monthIdx, setMonthIdx] = useState(0);
+  const [month, setMonth] = useState(() => monthKey(today));
+
+  // This month first, then every earlier month that has entries, then "All months".
+  const monthOptions = useMemo(() => {
+    const current = monthKey(today);
+    const keys = new Set<string>([current]);
+    for (const tx of transactions) keys.add(tx.date.slice(0, 7));
+    const sorted = [...keys].filter((k) => k <= current).sort().reverse();
+    return [...sorted, ALL_MONTHS];
+  }, [transactions, today]);
+  const activeMonth = monthOptions.includes(month) ? month : monthOptions[0];
+
+  const cycleMonth = () => {
+    const idx = monthOptions.indexOf(activeMonth);
+    setMonth(monthOptions[(idx + 1) % monthOptions.length]);
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return transactions.filter((tx) => {
+      if (activeMonth !== ALL_MONTHS && !tx.date.startsWith(activeMonth)) return false;
       if (filter === 'expense' && tx.type !== 'expense') return false;
       if (filter === 'income' && tx.type !== 'income') return false;
       if (!q) return true;
@@ -34,7 +58,7 @@ export default function TransactionsScreen() {
         (tx.note?.toLowerCase().includes(q) ?? false)
       );
     });
-  }, [transactions, filter, query]);
+  }, [transactions, filter, query, activeMonth]);
 
   const grouped = useMemo(() => {
     const groups: { label: string; items: Transaction[]; net: number }[] = [];
@@ -74,11 +98,12 @@ export default function TransactionsScreen() {
           </View>
 
           <Pressable
-            onPress={() => setMonthIdx((prev) => (prev + 1) % MONTH_FILTERS.length)}
+            onPress={cycleMonth}
+            accessibilityLabel="Change month"
             className="flex-row items-center gap-1 bg-white border border-warm-border rounded-full px-3.5 py-2 active:opacity-75"
           >
             <Text className="text-[13.5px] font-semibold text-charcoal">
-              {MONTH_FILTERS[monthIdx]}
+              {monthLabel(activeMonth, today)}
             </Text>
             <ChevronDown size={15} color="#141413" strokeWidth={2} />
           </Pressable>
@@ -133,19 +158,28 @@ export default function TransactionsScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 24, gap: 18 }}
         >
+          {grouped.length === 0 ? (
+            <Text className="mt-10 text-center text-[14px] text-warm-gray">
+              {query.trim() || filter !== 'all'
+                ? 'No matching transactions.'
+                : `No transactions in ${monthLabel(activeMonth, today)}.`}
+            </Text>
+          ) : null}
           {grouped.map((group) => (
             <View key={group.label}>
               <View className="flex-row items-center justify-between mb-2 px-1">
                 <Text className="text-[13px] font-medium text-warm-gray">
                   {group.label}
                 </Text>
-                <Text className="text-[13px] font-medium text-warm-gray">
-                  -{sym}
-                  {Math.abs(group.net).toLocaleString('en-US', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
-                </Text>
+                {group.net !== 0 ? (
+                  <Text className="text-[13px] font-medium text-warm-gray">
+                    -{sym}
+                    {Math.abs(group.net).toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </Text>
+                ) : null}
               </View>
 
               <View className="bg-white border border-warm-border rounded-3xl px-4">

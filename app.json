@@ -43,7 +43,15 @@
           "faceIDPermission": "Eunox uses Face ID to unlock the app."
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Eunox uses the camera to read receipts. Photos are processed on your phone and deleted after.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

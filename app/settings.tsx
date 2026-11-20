@@ -1,6 +1,7 @@
 import React from 'react';
 import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 import { Href, router } from 'expo-router';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { getBillStatus, useBudget } from '@/context/BudgetContext';
@@ -39,9 +40,7 @@ export default function SettingsScreen() {
         text: 'Turn off',
         style: 'destructive',
         onPress: () => {
-          lock.disableLock().catch(() =>
-            Alert.alert("Couldn't turn off app lock", 'Please try again.')
-          );
+          router.push({ pathname: '/lock', params: { mode: 'disable' } });
         },
       },
     ]);
@@ -253,7 +252,7 @@ export default function SettingsScreen() {
         </View>
 
         <Text className="mt-6 text-center text-[12.5px] text-warm-gray">
-          Eunox 1.0 · Everything is stored on this phone
+          Eunox {Constants.expoConfig?.version ?? ''} · Everything is stored on this phone
         </Text>
       </ScrollView>
     </SafeAreaView>

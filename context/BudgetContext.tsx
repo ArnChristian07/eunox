@@ -177,6 +177,7 @@ interface BudgetContextValue {
   /** Non-null when AsyncStorage read or write failed. */
   storageError: string | null;
   clearStorageError: () => void;
+  retryHydration: () => void;
   today: Date;
   period: BudgetPeriod;
   previousPeriod: BudgetPeriod;
@@ -450,15 +451,22 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   const [hideAmountsOnHome, setHideAmountsOnHome] = useState(false);
   const [noxSuggestionsEnabled, setNoxSuggestionsEnabled] = useState(true);
   const [hydrated, setHydrated] = useState(false);
+  const [hydrationAttempt, setHydrationAttempt] = useState(0);
+  const [seeded, setSeeded] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
 
-  // Seed starter categories once, after the user picks "Simple" in onboarding.
+  // Seed starter categories once, after the user completes onboarding.
   const seededRef = useRef(false);
   // Prevents resetAll() from immediately re-persisting empty defaults after removeKeys().
   const skipNextPersistRef = useRef(false);
 
   const clearStorageError = useCallback(() => {
     setStorageError(null);
+  }, []);
+
+  const retryHydration = useCallback(() => {
+    setStorageError(null);
+    setHydrationAttempt((n) => n + 1);
   }, []);
 
   useEffect(() => {
@@ -499,14 +507,17 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         if (typeof saved.noxSuggestionsEnabled === 'boolean') {
           setNoxSuggestionsEnabled(saved.noxSuggestionsEnabled);
         }
-        seededRef.current = !!saved.seeded;
+        const wasSeeded = !!saved.seeded;
+        seededRef.current = wasSeeded;
+        setSeeded(wasSeeded);
       }
+      setStorageError(null);
       setHydrated(true);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [hydrationAttempt]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -523,7 +534,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       transfers,
       goals,
       bills,
-      seeded: seededRef.current,
+      seeded,
       lastBackup,
       hideAmountsOnHome,
       noxSuggestionsEnabled,
@@ -544,6 +555,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     };
   }, [
     hydrated,
+    seeded,
     transactions,
     categoryRecords,
     walletRecords,
@@ -558,6 +570,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!hydrated || !hasCompletedOnboarding || seededRef.current) return;
     seededRef.current = true;
+    setSeeded(true);
     if (starterMode !== 'simple') return;
     setCategoryRecords((prev) =>
       prev.length > 0
@@ -1134,6 +1147,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     setGoals(snap.goals as SavingsGoal[]);
     setBills(cleanBills);
     seededRef.current = true;
+    setSeeded(true);
     return true;
   }, []);
 
@@ -1150,6 +1164,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     setNoxSuggestionsEnabled(true);
     setStorageError(null);
     seededRef.current = false;
+    setSeeded(false);
     removeKeys([STORAGE_KEYS.budget]);
   }, []);
 
@@ -1158,6 +1173,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       hydrated,
       storageError,
       clearStorageError,
+      retryHydration,
       today,
       period,
       previousPeriod,
@@ -1214,6 +1230,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       hydrated,
       storageError,
       clearStorageError,
+      retryHydration,
       today,
       period,
       previousPeriod,

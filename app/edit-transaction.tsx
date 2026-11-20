@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react-native';
 import { NoxMiniIcon } from '@/components/NoxMascot';
-import { CategoryType, useBudget } from '@/context/BudgetContext';
+import { CategoryType, Transaction, useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
 import {
   addDays,
@@ -28,55 +28,8 @@ const REPEAT_CYCLE = ['Never', 'Weekly', 'Monthly'];
 
 export default function EditTransactionScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const { selectedCurrency } = useOnboarding();
-  const {
-    today,
-    transactions,
-    wallets,
-    expenseCategories,
-    incomeCategories,
-    updateTransaction,
-    deleteTransaction,
-  } = useBudget();
-  const sym = selectedCurrency.symbol;
-
+  const { transactions } = useBudget();
   const tx = id ? transactions.find((t) => t.id === id) : undefined;
-
-  const [txType, setTxType] = useState<CategoryType>(
-    tx?.type === 'income' ? 'income' : 'expense'
-  );
-  const [amountInput, setAmountInput] = useState(
-    tx ? tx.amount.toFixed(2) : ''
-  );
-  const [date, setDate] = useState(tx?.date ?? toISODate(today));
-  const [category, setCategory] = useState(tx?.category ?? '');
-  const [walletId, setWalletId] = useState(() => {
-    if (!tx) return wallets[0]?.id ?? '';
-    const match =
-      (tx.walletId ? wallets.find((w) => w.id === tx.walletId) : undefined) ??
-      wallets.find((w) => w.name.toLowerCase() === tx.wallet.toLowerCase());
-    return match?.id ?? wallets[0]?.id ?? '';
-  });
-  const [repeat, setRepeat] = useState(tx?.repeat ?? 'Never');
-  const [note, setNote] = useState(tx?.note ?? '');
-  const [error, setError] = useState<string | null>(null);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-
-  // Sync form fields if `tx` loads asynchronously after hydration.
-  useEffect(() => {
-    if (!tx) return;
-    setTxType(tx.type === 'income' ? 'income' : 'expense');
-    setAmountInput(tx.amount.toFixed(2));
-    setDate(tx.date);
-    setCategory(tx.category);
-    const match =
-      (tx.walletId ? wallets.find((w) => w.id === tx.walletId) : undefined) ??
-      wallets.find((w) => w.name.toLowerCase() === tx.wallet.toLowerCase());
-    if (match) setWalletId(match.id);
-    setRepeat(tx.repeat ?? 'Never');
-    setNote(tx.note ?? '');
-    setError(null);
-  }, [tx?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!tx) {
     return (
@@ -109,6 +62,38 @@ export default function EditTransactionScreen() {
       </SafeAreaView>
     );
   }
+
+  return <EditTransactionForm key={tx.id} tx={tx} />;
+}
+
+function EditTransactionForm({ tx }: { tx: Transaction }) {
+  const { selectedCurrency } = useOnboarding();
+  const {
+    today,
+    wallets,
+    expenseCategories,
+    incomeCategories,
+    updateTransaction,
+    deleteTransaction,
+  } = useBudget();
+  const sym = selectedCurrency.symbol;
+
+  const [txType, setTxType] = useState<CategoryType>(
+    tx.type === 'income' ? 'income' : 'expense'
+  );
+  const [amountInput, setAmountInput] = useState(tx.amount.toFixed(2));
+  const [date, setDate] = useState(tx.date);
+  const [category, setCategory] = useState(tx.category);
+  const [walletId, setWalletId] = useState(() => {
+    const match =
+      (tx.walletId ? wallets.find((w) => w.id === tx.walletId) : undefined) ??
+      wallets.find((w) => w.name.toLowerCase() === tx.wallet.toLowerCase());
+    return match?.id ?? wallets[0]?.id ?? '';
+  });
+  const [repeat, setRepeat] = useState(tx.repeat ?? 'Never');
+  const [note, setNote] = useState(tx.note ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const categoryList =
     txType === 'income'

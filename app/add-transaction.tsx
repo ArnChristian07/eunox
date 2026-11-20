@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
@@ -92,32 +92,12 @@ export default function AddTransactionModal() {
   const [savedAmount, setSavedAmount] = useState(0);
   const [savedSummary, setSavedSummary] = useState('');
 
-  // Keep selected wallet IDs valid if wallets hydrate or change.
-  useEffect(() => {
-    if (wallets.length === 0) return;
-    const validFrom = wallets.some((w) => w.id === walletId);
-    const nextFrom = validFrom ? walletId : (defaultWallet?.id ?? wallets[0].id);
-    if (nextFrom !== walletId) setWalletId(nextFrom);
-
-    const validTo = wallets.some((w) => w.id === toWalletId && w.id !== nextFrom);
-    if (!validTo) {
-      const other = wallets.find((w) => w.id !== nextFrom);
-      setToWalletId(other?.id ?? '');
-    }
-  }, [wallets, defaultWallet, walletId, toWalletId]);
-
   const activeCategoryNames = txType === 'income' ? incomeNames : expenseNames;
-
-  // Keep selectedCategory compatible with the active txType.
-  useEffect(() => {
-    if (txType === 'transfer') return;
-    const exists = activeCategoryNames.some(
-      (name) => name.toLowerCase() === selectedCategory.toLowerCase()
-    );
-    if (!exists && activeCategoryNames[0]) {
-      setSelectedCategory(activeCategoryNames[0]);
-    }
-  }, [txType, activeCategoryNames, selectedCategory]);
+  const effectiveCategory = activeCategoryNames.some(
+    (name) => name.toLowerCase() === selectedCategory.toLowerCase()
+  )
+    ? selectedCategory
+    : (activeCategoryNames[0] ?? selectedCategory);
 
   const selectedWallet =
     wallets.find((w) => w.id === walletId) ?? defaultWallet ?? wallets[0];
@@ -237,8 +217,8 @@ export default function AddTransactionModal() {
     }
 
     const id = addTransaction({
-      title: quickText.trim() || selectedCategory,
-      category: selectedCategory,
+      title: quickText.trim() || effectiveCategory,
+      category: effectiveCategory,
       amount: numericAmount,
       type: txType,
       date: toISODate(txDate),
@@ -252,7 +232,7 @@ export default function AddTransactionModal() {
     }
     setSavedKind(txType);
     setSavedAmount(numericAmount);
-    setSavedSummary(`${selectedCategory} · ${dateLabel} · ${selectedWallet.name}`);
+    setSavedSummary(`${effectiveCategory} · ${dateLabel} · ${selectedWallet.name}`);
     setSavedId(id);
   };
 
@@ -280,7 +260,7 @@ export default function AddTransactionModal() {
         ? categories.find(
             (c) =>
               c.type === 'expense' &&
-              c.name.toLowerCase() === selectedCategory.toLowerCase()
+              c.name.toLowerCase() === effectiveCategory.toLowerCase()
           )
         : undefined;
     const pct =
@@ -437,7 +417,7 @@ export default function AddTransactionModal() {
             </View>
 
             <Pressable
-              onPress={() => router.push('/scan-receipt' as Href)}
+              onPress={() => router.push({ pathname: '/scan-receipt', params: { from: 'add-transaction' } } as Href)}
               accessibilityLabel="Scan receipt"
               className="w-10 h-10 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
             >
@@ -526,7 +506,7 @@ export default function AddTransactionModal() {
                 <View className="flex-row items-center gap-2 mt-2.5">
                   <View className="bg-nox-lime rounded-full px-3 py-1">
                     <Text className="text-[12.5px] font-semibold text-charcoal">
-                      {selectedCategory}
+                      {effectiveCategory}
                     </Text>
                   </View>
                   <View className="bg-[#F3F2EC] rounded-full px-3 py-1">
@@ -545,7 +525,7 @@ export default function AddTransactionModal() {
               {/* Category Pills */}
               <View className="flex-row flex-wrap gap-2 mt-4">
                 {activeCategoryNames.map((cat) => {
-                  const active = selectedCategory === cat;
+                  const active = effectiveCategory === cat;
                   return (
                     <Pressable
                       key={cat}

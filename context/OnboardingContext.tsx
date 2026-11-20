@@ -8,7 +8,7 @@ import React, {
 } from 'react';
 import { getLocales } from 'expo-localization';
 import { CURRENCIES, Currency } from '@/constants/currencies';
-import { loadJSON, saveJSON, STORAGE_KEYS } from '@/lib/storage';
+import { loadJSONSafe, saveJSON, STORAGE_KEYS } from '@/lib/storage';
 
 export type MonthStartOption = '1st' | '15th' | 'Last day' | 'Other';
 export type StarterMode = 'simple' | 'blank';
@@ -28,6 +28,9 @@ interface PersistedOnboarding extends MoneySettings {
 interface OnboardingContextValue {
   /** False until saved settings have been read from storage. */
   hydrated: boolean;
+  /** Non-null when AsyncStorage read failed on bootstrap. */
+  storageError: string | null;
+  retryHydration: () => void;
   hasCompletedOnboarding: boolean;
   completeOnboarding: () => void;
   regionCurrencyCode: string;
@@ -74,17 +77,32 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
   );
 
   const [hydrated, setHydrated] = useState(false);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const [hydrationAttempt, setHydrationAttempt] = useState(0);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [selectedCurrency, setSelectedCurrency] = useState<Currency>(initialCurrency);
   const [monthlyBudget, setMonthlyBudget] = useState('');
   const [monthStart, setMonthStart] = useState<MonthStartOption>('1st');
   const [starterMode, setStarterMode] = useState<StarterMode>('simple');
 
+  const retryHydration = useCallback(() => {
+    setStorageError(null);
+    setHydrationAttempt((n) => n + 1);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    loadJSON<PersistedOnboarding>(STORAGE_KEYS.onboarding).then((saved) => {
+    loadJSONSafe<PersistedOnboarding>(STORAGE_KEYS.onboarding).then((result) => {
       if (cancelled) return;
-      if (saved) {
+      if (result.status === 'error') {
+        // Do NOT mark hydrated on read failure so auto-save never overwrites saved settings.
+        setStorageError(
+          'Could not read your saved setup. Retry to avoid resetting your preferences.'
+        );
+        return;
+      }
+      if (result.status === 'ok') {
+        const saved = result.data;
         setHasCompletedOnboarding(!!saved.hasCompletedOnboarding);
         const currency = findCurrency(saved.currencyCode);
         if (currency) setSelectedCurrency(currency);
@@ -96,12 +114,13 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
           setStarterMode(saved.starterMode);
         }
       }
+      setStorageError(null);
       setHydrated(true);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [hydrationAttempt]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -149,6 +168,8 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
   const value = useMemo<OnboardingContextValue>(
     () => ({
       hydrated,
+      storageError,
+      retryHydration,
       hasCompletedOnboarding,
       completeOnboarding,
       regionCurrencyCode,
@@ -166,6 +187,8 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     }),
     [
       hydrated,
+      storageError,
+      retryHydration,
       hasCompletedOnboarding,
       completeOnboarding,
       regionCurrencyCode,

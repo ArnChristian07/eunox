@@ -18,9 +18,10 @@ import { formatRelativeDay, getGreeting } from '@/lib/dates';
 import { formatMoney } from '@/lib/format';
 import { getHomeInsight } from '@/lib/nox';
 
-function splitAmountParts(amount: number) {
-  const fixed = amount.toFixed(2);
-  const [whole, dec] = fixed.split('.');
+function splitAmountParts(amount: number, decimals = 2) {
+  const safeDecimals = Math.max(0, Math.min(3, decimals));
+  const fixed = amount.toFixed(safeDecimals);
+  const [whole, dec = ''] = fixed.split('.');
   return {
     whole: Number(whole).toLocaleString('en-US'),
     dec,
@@ -61,7 +62,10 @@ export default function HomeScreen() {
   const sym = selectedCurrency.symbol;
   const isEmpty = transactions.length === 0;
   const hasBudget = totalBudget > 0;
-  const heroParts = splitAmountParts(hasBudget ? leftToSpend : totalSpent);
+  const heroParts = splitAmountParts(
+    hasBudget ? leftToSpend : totalSpent,
+    selectedCurrency.decimals ?? 2
+  );
   const spentPercent = hasBudget
     ? Math.min(100, Math.round((totalSpent / totalBudget) * 100))
     : 0;
@@ -127,7 +131,7 @@ export default function HomeScreen() {
             <Text className="text-[40px] leading-[46px] font-bold tracking-tight text-white">
               {amountsHidden ? `${sym}••••` : `${sym}${heroParts.whole}`}
             </Text>
-            {!amountsHidden ? (
+            {!amountsHidden && heroParts.dec ? (
               <Text className="text-[34px] leading-[42px] font-bold text-[#8A8880]">
                 .{heroParts.dec}
               </Text>

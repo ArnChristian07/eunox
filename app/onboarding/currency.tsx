@@ -2,18 +2,23 @@ import React, { useMemo, useState } from 'react';
 import { FlatList, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Check, Search } from 'lucide-react-native';
+import { Check, ChevronLeft, Search, X } from 'lucide-react-native';
 import { OnboardingHeader } from '@/components/OnboardingHeader';
 import { CURRENCIES, Currency, formatSampleAmount } from '@/constants/currencies';
 import { useOnboarding } from '@/context/OnboardingContext';
 
 export default function OnboardingCurrencyScreen() {
   const {
+    hasCompletedOnboarding,
     regionCurrencyCode,
     selectedCurrency,
     setSelectedCurrency,
   } = useOnboarding();
+  const isEditing = hasCompletedOnboarding;
+  const [draftCurrency, setDraftCurrency] = useState<Currency>(selectedCurrency);
   const [query, setQuery] = useState('');
+
+  const activeCurrency = isEditing ? draftCurrency : selectedCurrency;
 
   const filteredCurrencies = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -26,17 +31,30 @@ export default function OnboardingCurrencyScreen() {
     );
   }, [query]);
 
-  const handleContinue = () => {
+  const handleSelect = (item: Currency) => {
+    if (isEditing) {
+      setDraftCurrency(item);
+    } else {
+      setSelectedCurrency(item);
+    }
+  };
+
+  const handlePrimaryAction = () => {
+    if (isEditing) {
+      setSelectedCurrency(draftCurrency);
+      router.back();
+      return;
+    }
     router.push('/onboarding/budget');
   };
 
   const renderCurrencyItem = ({ item }: { item: Currency }) => {
-    const isSelected = item.code === selectedCurrency.code;
+    const isSelected = item.code === activeCurrency.code;
     const isRegion = item.code === regionCurrencyCode;
 
     return (
       <Pressable
-        onPress={() => setSelectedCurrency(item)}
+        onPress={() => handleSelect(item)}
         accessibilityRole="radio"
         accessibilityState={{ selected: isSelected }}
         className={`flex-row items-center px-3 py-2.5 rounded-2xl ${
@@ -85,7 +103,23 @@ export default function OnboardingCurrencyScreen() {
   return (
     <SafeAreaView className="flex-1 bg-cream">
       <View className="flex-1 px-6 pb-6">
-        <OnboardingHeader step={1} onBack={() => router.back()} />
+        {isEditing ? (
+          <View className="flex-row items-center gap-3 pt-2 pb-5">
+            <Pressable
+              onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+              className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-70"
+            >
+              <ChevronLeft size={20} color="#141413" strokeWidth={2} />
+            </Pressable>
+            <Text className="text-[18px] font-bold text-charcoal">
+              Main currency
+            </Text>
+          </View>
+        ) : (
+          <OnboardingHeader step={1} onBack={() => router.back()} />
+        )}
 
         {/* Title & Subtitle */}
         <Text className="text-[30px] leading-[35px] font-bold tracking-tight text-charcoal">
@@ -101,12 +135,22 @@ export default function OnboardingCurrencyScreen() {
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search 160+ currencies"
+            placeholder="Search currencies"
             placeholderTextColor="#8A8880"
             autoCorrect={false}
             autoCapitalize="none"
             className="flex-1 ml-2.5 text-[15px] text-charcoal"
           />
+          {query.length > 0 ? (
+            <Pressable
+              onPress={() => setQuery('')}
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
+              className="p-1 active:opacity-60"
+            >
+              <X size={16} color="#8A8880" strokeWidth={2} />
+            </Pressable>
+          ) : null}
         </View>
 
         {/* Currency List Card */}
@@ -134,18 +178,20 @@ export default function OnboardingCurrencyScreen() {
             Amounts will look like
           </Text>
           <Text className="text-[16px] font-bold text-charcoal">
-            {formatSampleAmount(selectedCurrency)}
+            {formatSampleAmount(activeCurrency)}
           </Text>
         </View>
 
         {/* Primary CTA */}
         <Pressable
-          onPress={handleContinue}
+          onPress={handlePrimaryAction}
           accessibilityRole="button"
           className="bg-charcoal rounded-full h-[54px] items-center justify-center active:opacity-85"
         >
           <Text className="text-white text-[16px] font-semibold">
-            Continue with {selectedCurrency.code}
+            {isEditing
+              ? `Save ${activeCurrency.code}`
+              : `Continue with ${activeCurrency.code}`}
           </Text>
         </Pressable>
       </View>

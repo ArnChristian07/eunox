@@ -26,6 +26,8 @@ interface PinPadProps {
   /** Return false to reject the PIN: the dots shake and clear. */
   onComplete: (pin: string) => boolean | Promise<boolean>;
   onBiometric?: () => void;
+  /** Disables numeric PIN input (e.g. during brute-force lockout). */
+  disabled?: boolean;
 }
 
 /** To clear the entered digits between steps, give the PinPad a new `key`. */
@@ -38,6 +40,7 @@ export function PinPad({
   footer,
   onComplete,
   onBiometric,
+  disabled = false,
 }: PinPadProps) {
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
@@ -64,6 +67,7 @@ export function PinPad({
       onBiometric?.();
       return;
     }
+    if (disabled) return;
     if (key === 'back') {
       setPin((prev) => prev.slice(0, -1));
       return;
@@ -131,9 +135,12 @@ export function PinPad({
                   return (
                     <Pressable
                       key={key}
+                      disabled={disabled}
                       onPress={() => handlePress(key)}
                       accessibilityLabel="Backspace"
-                      className="flex-1 h-16 items-center justify-center active:opacity-60"
+                      className={`flex-1 h-16 items-center justify-center active:opacity-60 ${
+                        disabled ? 'opacity-35' : ''
+                      }`}
                     >
                       <Delete size={24} color="#141413" strokeWidth={1.8} />
                     </Pressable>
@@ -142,8 +149,11 @@ export function PinPad({
                 return (
                   <Pressable
                     key={key}
+                    disabled={disabled}
                     onPress={() => handlePress(key)}
-                    className="flex-1 h-16 rounded-2xl bg-white items-center justify-center active:bg-[#EAE8E1]"
+                    className={`flex-1 h-16 rounded-2xl bg-white items-center justify-center active:bg-[#EAE8E1] ${
+                      disabled ? 'opacity-40' : ''
+                    }`}
                   >
                     <Text className="text-[24px] font-semibold text-charcoal">{key}</Text>
                   </Pressable>

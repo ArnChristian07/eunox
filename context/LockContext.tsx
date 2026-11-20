@@ -10,14 +10,25 @@ import React, {
 import { AppState } from 'react-native';
 import {
   canUseBiometrics,
+  checkPinPresence,
+  clearLockoutState,
   clearPin,
-  getStoredPin,
+  getLockoutState,
   isLockSupported,
   storePin,
+  VerifyPinResult,
+  verifyStoredPin,
 } from '@/lib/appLock';
 
 /** Coming back after this long in the background asks for the PIN again. */
 const RELOCK_AFTER_MS = 30_000;
+
+/** Monotonic clock immune to device wall-clock tampering while backgrounded. */
+function monotonicNow(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+}
 
 interface LockContextValue {
   /** False until the saved PIN has been checked. */
@@ -25,8 +36,12 @@ interface LockContextValue {
   supported: boolean;
   enabled: boolean;
   locked: boolean;
+  /** True while app is inactive/backgrounded with lock enabled, preventing snapshot & resume flicker. */
+  privacyShield: boolean;
   biometricsAvailable: boolean;
-  verifyPin: (pin: string) => boolean;
+  failedAttempts: number;
+  lockedUntil: number;
+  verifyPin: (pin: string) => Promise<VerifyPinResult>;
   unlock: () => void;
   setPin: (pin: string) => Promise<void>;
   disableLock: () => Promise<void>;
@@ -37,26 +52,35 @@ const LockContext = createContext<LockContextValue | null>(null);
 export function LockProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [supported, setSupported] = useState(false);
-  const [locked, setLocked] = useState(false);
-  const [biometricsAvailable, setBiometricsAvailable] = useState(false);
-  const pinRef = useRef<string | null>(null);
   const [enabled, setEnabled] = useState(false);
+  const [locked, setLocked] = useState(false);
+  const [privacyShield, setPrivacyShield] = useState(false);
+  const [biometricsAvailable, setBiometricsAvailable] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState(0);
+
+  const enabledRef = useRef(false);
   const backgroundedAt = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [isSupported, pin, bio] = await Promise.all([
+      const [isSupported, pinPresence, bio, lockout] = await Promise.all([
         isLockSupported(),
-        getStoredPin(),
+        checkPinPresence(),
         canUseBiometrics(),
+        getLockoutState(),
       ]);
       if (cancelled) return;
-      pinRef.current = pin;
+      // Fail closed if SecureStore threw a transient error while checking the PIN.
+      const isEnabled = pinPresence.status === 'present' || pinPresence.status === 'error';
+      enabledRef.current = isEnabled;
       setSupported(isSupported);
-      setEnabled(!!pin);
-      setLocked(!!pin);
+      setEnabled(isEnabled);
+      setLocked(isEnabled);
       setBiometricsAvailable(bio);
+      setFailedAttempts(lockout.failedAttempts);
+      setLockedUntil(lockout.lockedUntil);
       setReady(true);
     })();
     return () => {
@@ -66,16 +90,22 @@ export function LockProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'background') {
-        backgroundedAt.current = Date.now();
+      if (state === 'inactive' || state === 'background') {
+        if (enabledRef.current) {
+          setPrivacyShield(true);
+        }
+        if (state === 'background' && backgroundedAt.current === null) {
+          backgroundedAt.current = monotonicNow();
+        }
         return;
       }
       if (state === 'active') {
         const since = backgroundedAt.current;
         backgroundedAt.current = null;
-        if (pinRef.current && since !== null && Date.now() - since > RELOCK_AFTER_MS) {
+        if (enabledRef.current && since !== null && monotonicNow() - since > RELOCK_AFTER_MS) {
           setLocked(true);
         }
+        setPrivacyShield(false);
         // Fingerprints may have been added or removed while away.
         canUseBiometrics().then(setBiometricsAvailable);
       }
@@ -83,24 +113,37 @@ export function LockProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, []);
 
-  const verifyPin = useCallback(
-    (pin: string) => pinRef.current !== null && pin === pinRef.current,
-    []
-  );
+  const verifyPin = useCallback(async (pin: string): Promise<VerifyPinResult> => {
+    const result = await verifyStoredPin(pin);
+    setFailedAttempts(result.failedAttempts);
+    setLockedUntil(result.lockedUntil);
+    return result;
+  }, []);
 
-  const unlock = useCallback(() => setLocked(false), []);
+  const unlock = useCallback(() => {
+    setLocked(false);
+    setPrivacyShield(false);
+    setFailedAttempts(0);
+    setLockedUntil(0);
+    clearLockoutState();
+  }, []);
 
   const setPin = useCallback(async (pin: string) => {
     await storePin(pin);
-    pinRef.current = pin;
+    enabledRef.current = true;
     setEnabled(true);
+    setFailedAttempts(0);
+    setLockedUntil(0);
   }, []);
 
   const disableLock = useCallback(async () => {
     await clearPin();
-    pinRef.current = null;
+    enabledRef.current = false;
     setEnabled(false);
     setLocked(false);
+    setPrivacyShield(false);
+    setFailedAttempts(0);
+    setLockedUntil(0);
   }, []);
 
   const value = useMemo<LockContextValue>(
@@ -109,13 +152,29 @@ export function LockProvider({ children }: { children: React.ReactNode }) {
       supported,
       enabled,
       locked,
+      privacyShield,
       biometricsAvailable,
+      failedAttempts,
+      lockedUntil,
       verifyPin,
       unlock,
       setPin,
       disableLock,
     }),
-    [ready, supported, enabled, locked, biometricsAvailable, verifyPin, unlock, setPin, disableLock]
+    [
+      ready,
+      supported,
+      enabled,
+      locked,
+      privacyShield,
+      biometricsAvailable,
+      failedAttempts,
+      lockedUntil,
+      verifyPin,
+      unlock,
+      setPin,
+      disableLock,
+    ]
   );
 
   return <LockContext.Provider value={value}>{children}</LockContext.Provider>;

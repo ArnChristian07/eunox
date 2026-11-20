@@ -132,7 +132,12 @@ export default function BackupScreen() {
       kind: 'ok',
       text: `Restored ${picked.data.transactions.length} transactions`,
     });
-    if (wasOnboarding) router.replace('/');
+    if (wasOnboarding) {
+      if (router.canDismiss()) {
+        router.dismissAll();
+      }
+      router.replace('/(tabs)');
+    }
   };
 
   const pickedDate = picked?.data.exportedAt
