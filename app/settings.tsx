@@ -1,13 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { Href, router } from 'expo-router';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
 
+const THEME_OPTIONS = ['Match phone', 'Light', 'Dark'];
+
 export default function SettingsScreen() {
   const { selectedCurrency, monthStart } = useOnboarding();
+  const [themeIdx, setThemeIdx] = useState(0);
   const {
     wallets,
     categories,
@@ -76,7 +79,7 @@ export default function SettingsScreen() {
           </Pressable>
 
           <Pressable
-            onPress={() => router.push('/(tabs)/budgets')}
+            onPress={() => router.push('/categories' as Href)}
             className="flex-row items-center justify-between py-4 border-b border-warm-border"
           >
             <Text className="text-[15px] font-medium text-charcoal">
@@ -90,7 +93,10 @@ export default function SettingsScreen() {
             </View>
           </Pressable>
 
-          <View className="flex-row items-center justify-between py-4 border-b border-warm-border">
+          <Pressable
+            onPress={() => router.push('/recurring-bills' as Href)}
+            className="flex-row items-center justify-between py-4 border-b border-warm-border"
+          >
             <Text className="text-[15px] font-medium text-charcoal">
               Recurring bills
             </Text>
@@ -98,9 +104,12 @@ export default function SettingsScreen() {
               <Text className="text-[14.5px] text-warm-gray">2 due</Text>
               <ChevronRight size={16} color="#8A8880" strokeWidth={2} />
             </View>
-          </View>
+          </Pressable>
 
-          <View className="flex-row items-center justify-between py-4 border-b border-warm-border">
+          <Pressable
+            onPress={() => router.push('/savings-goals' as Href)}
+            className="flex-row items-center justify-between py-4 border-b border-warm-border"
+          >
             <Text className="text-[15px] font-medium text-charcoal">
               Savings goals
             </Text>
@@ -108,7 +117,7 @@ export default function SettingsScreen() {
               <Text className="text-[14.5px] text-warm-gray">3</Text>
               <ChevronRight size={16} color="#8A8880" strokeWidth={2} />
             </View>
-          </View>
+          </Pressable>
 
           <Pressable
             onPress={() => router.push('/onboarding/budget')}
@@ -206,13 +215,18 @@ export default function SettingsScreen() {
             />
           </View>
 
-          <View className="flex-row items-center justify-between py-4">
+          <Pressable
+            onPress={() => setThemeIdx((prev) => (prev + 1) % THEME_OPTIONS.length)}
+            className="flex-row items-center justify-between py-4 active:opacity-70"
+          >
             <Text className="text-[15px] font-medium text-charcoal">Theme</Text>
             <View className="flex-row items-center gap-1.5">
-              <Text className="text-[14.5px] text-warm-gray">Match phone</Text>
+              <Text className="text-[14.5px] text-warm-gray">
+                {THEME_OPTIONS[themeIdx]}
+              </Text>
               <ChevronRight size={16} color="#8A8880" strokeWidth={2} />
             </View>
-          </View>
+          </Pressable>
         </View>
 
         <Text className="mt-6 text-center text-[12.5px] text-warm-gray">

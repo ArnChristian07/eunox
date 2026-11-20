@@ -1,6 +1,5 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -10,6 +9,16 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, {
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
+import { router } from 'expo-router';
 import { ArrowUp, History, Square } from 'lucide-react-native';
 import { NoxMiniIcon, NoxThinkingIcon } from '@/components/NoxMascot';
 import { useBudget } from '@/context/BudgetContext';
@@ -25,15 +34,48 @@ interface ChatMessage {
 
 const SUGGESTIONS = ['Where can I cut back?', 'Compare to October'];
 
+function PulsingDot({ delay }: { delay: number }) {
+  const opacity = useSharedValue(0.35);
+
+  useEffect(() => {
+    opacity.value = withDelay(
+      delay,
+      withRepeat(
+        withSequence(
+          withTiming(1, { duration: 400 }),
+          withTiming(0.35, { duration: 400 })
+        ),
+        -1,
+        true
+      )
+    );
+  }, [delay, opacity]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Animated.View
+      style={animStyle}
+      className="w-2 h-2 rounded-full bg-[#8A8880]"
+    />
+  );
+}
+
 export default function NoxChatScreen() {
   const { selectedCurrency } = useOnboarding();
-  const { transactions } = useBudget();
+  const { transactions, addGoal, goals } = useBudget();
   const sym = selectedCurrency.symbol;
 
   const nextIdRef = useRef(1);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [reminderSet, setReminderSet] = useState(false);
+  const [wishlistAdded, setWishlistAdded] = useState(() =>
+    goals.some((g) => g.title === 'Jacket')
+  );
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'm1',
@@ -142,7 +184,8 @@ export default function NoxChatScreen() {
 
           {!isThinking ? (
             <Pressable
-              accessibilityLabel="Chat history"
+              onPress={() => setMessages([])}
+              accessibilityLabel="New chat"
               className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
             >
               <History size={19} color="#141413" strokeWidth={2} />
@@ -158,16 +201,21 @@ export default function NoxChatScreen() {
         >
           {messages.map((msg) =>
             msg.sender === 'user' ? (
-              <View key={msg.id} className="items-end">
+              <Animated.View
+                key={msg.id}
+                entering={FadeInDown.duration(220)}
+                className="items-end"
+              >
                 <View className="bg-charcoal rounded-3xl rounded-br-md px-4 py-3 max-w-[82%]">
                   <Text className="text-[14.5px] leading-[20px] text-white">
                     {msg.text}
                   </Text>
                 </View>
-              </View>
+              </Animated.View>
             ) : (
-              <View
+              <Animated.View
                 key={msg.id}
+                entering={FadeInDown.duration(260)}
                 className="bg-white border border-warm-border rounded-3xl p-4"
               >
                 <Text className="text-[14.5px] leading-[20px] text-charcoal">
@@ -199,43 +247,65 @@ export default function NoxChatScreen() {
 
                 {msg.actions ? (
                   <View className="flex-row gap-2.5 mt-4">
-                    {msg.actions.map((action) => (
-                      <Pressable
-                        key={action.label}
-                        onPress={() =>
-                          Alert.alert(action.label, 'Saved on your device.')
-                        }
-                        className={`rounded-2xl px-4 py-2.5 ${
-                          action.primary
-                            ? 'bg-nox-lime'
-                            : 'bg-white border border-warm-border'
+                    <Pressable
+                      onPress={() => setReminderSet((prev) => !prev)}
+                      className={`rounded-2xl px-4 py-2.5 ${
+                        reminderSet
+                          ? 'bg-charcoal'
+                          : 'bg-nox-lime'
+                      }`}
+                    >
+                      <Text
+                        className={`text-[13.5px] font-semibold ${
+                          reminderSet ? 'text-white' : 'text-charcoal'
                         }`}
                       >
-                        <Text className="text-[13.5px] font-semibold text-charcoal">
-                          {action.label}
-                        </Text>
-                      </Pressable>
-                    ))}
+                        {reminderSet ? 'Reminder set · Dec 1' : 'Remind me Dec 1'}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        if (!wishlistAdded) {
+                          addGoal({
+                            title: 'Jacket',
+                            subtitle: 'From your chat with Nox · after Dec 1',
+                            saved: 0,
+                            target: 2500,
+                          });
+                          setWishlistAdded(true);
+                        } else {
+                          router.push('/savings-goals' as never);
+                        }
+                      }}
+                      className="rounded-2xl px-4 py-2.5 bg-white border border-warm-border"
+                    >
+                      <Text className="text-[13.5px] font-semibold text-charcoal">
+                        {wishlistAdded ? 'View in goals' : 'Add to wishlist'}
+                      </Text>
+                    </Pressable>
                   </View>
                 ) : null}
-              </View>
+              </Animated.View>
             )
           )}
 
           {/* Thinking Skeleton Bubble */}
           {isThinking ? (
-            <View className="bg-white border border-warm-border rounded-3xl p-4 max-w-[85%]">
+            <Animated.View
+              entering={FadeInDown.duration(200)}
+              className="bg-white border border-warm-border rounded-3xl p-4 max-w-[85%]"
+            >
               <View className="flex-row gap-1.5 mb-3">
-                <View className="w-2 h-2 rounded-full bg-[#B5B3AA]" />
-                <View className="w-2 h-2 rounded-full bg-[#C7C5BC]" />
-                <View className="w-2 h-2 rounded-full bg-[#D9D7CE]" />
+                <PulsingDot delay={0} />
+                <PulsingDot delay={150} />
+                <PulsingDot delay={300} />
               </View>
               <View className="h-3 rounded-full bg-[#EAE8E1] w-full mb-2" />
               <View className="h-3 rounded-full bg-[#EAE8E1] w-2/3 mb-3" />
               <Text className="text-[12px] text-warm-gray">
                 Reading {transactions.length} transactions from November
               </Text>
-            </View>
+            </Animated.View>
           ) : null}
         </ScrollView>
 

@@ -8,6 +8,8 @@ import { useOnboarding } from '@/context/OnboardingContext';
 
 type FilterTab = 'all' | 'expense' | 'income';
 
+const MONTH_FILTERS = ['November', 'October', 'All months'];
+
 export default function TransactionsScreen() {
   const { selectedCurrency } = useOnboarding();
   const { transactions } = useBudget();
@@ -15,6 +17,7 @@ export default function TransactionsScreen() {
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterTab>('all');
+  const [monthIdx, setMonthIdx] = useState(0);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -69,9 +72,12 @@ export default function TransactionsScreen() {
             </Text>
           </View>
 
-          <Pressable className="flex-row items-center gap-1 bg-white border border-warm-border rounded-full px-3.5 py-2">
+          <Pressable
+            onPress={() => setMonthIdx((prev) => (prev + 1) % MONTH_FILTERS.length)}
+            className="flex-row items-center gap-1 bg-white border border-warm-border rounded-full px-3.5 py-2 active:opacity-75"
+          >
             <Text className="text-[13.5px] font-semibold text-charcoal">
-              November
+              {MONTH_FILTERS[monthIdx]}
             </Text>
             <ChevronDown size={15} color="#141413" strokeWidth={2} />
           </Pressable>

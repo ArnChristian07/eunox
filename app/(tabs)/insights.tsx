@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ArrowDown } from 'lucide-react-native';
 import { NoxMiniIcon } from '@/components/NoxMascot';
 import { useBudget } from '@/context/BudgetContext';
@@ -8,14 +9,57 @@ import { useOnboarding } from '@/context/OnboardingContext';
 
 type PeriodTab = 'Week' | 'Month' | 'Year';
 
-const MONTHLY_BARS = [
-  { label: 'Jun', value: 16.2, display: '16.2k' },
-  { label: 'Jul', value: 14.9, display: '14.9k' },
-  { label: 'Aug', value: 17.4, display: '17.4k' },
-  { label: 'Sep', value: 15.3, display: '15.3k' },
-  { label: 'Oct', value: 14.8, display: '14.8k' },
-  { label: 'Nov', value: 13.6, display: '13.6k', active: true },
-];
+const PERIOD_DATA: Record<
+  PeriodTab,
+  {
+    subtitle: string;
+    total: number | null;
+    delta: string;
+    maxBar: number;
+    bars: { label: string; value: number; display: string; active?: boolean }[];
+  }
+> = {
+  Week: {
+    subtitle: 'Spent this week so far',
+    total: 3120,
+    delta: '410 less than last week',
+    maxBar: 1.2,
+    bars: [
+      { label: 'Mon', value: 0.42, display: '420' },
+      { label: 'Tue', value: 0.31, display: '310' },
+      { label: 'Wed', value: 0.65, display: '650' },
+      { label: 'Thu', value: 0.48, display: '480' },
+      { label: 'Fri', value: 0.86, display: '860' },
+      { label: 'Sat', value: 0.4, display: '400', active: true },
+    ],
+  },
+  Month: {
+    subtitle: 'Spent in November so far',
+    total: null,
+    delta: '1,204 less than October',
+    maxBar: 18,
+    bars: [
+      { label: 'Jun', value: 16.2, display: '16.2k' },
+      { label: 'Jul', value: 14.9, display: '14.9k' },
+      { label: 'Aug', value: 17.4, display: '17.4k' },
+      { label: 'Sep', value: 15.3, display: '15.3k' },
+      { label: 'Oct', value: 14.8, display: '14.8k' },
+      { label: 'Nov', value: 13.6, display: '13.6k', active: true },
+    ],
+  },
+  Year: {
+    subtitle: 'Spent in 2026 so far',
+    total: 168420,
+    delta: '8,500 less than 2025 pace',
+    maxBar: 20,
+    bars: [
+      { label: 'Q1', value: 15.8, display: '47k' },
+      { label: 'Q2', value: 17.2, display: '51k' },
+      { label: 'Q3', value: 16.4, display: '49k' },
+      { label: 'Q4', value: 13.6, display: '21k', active: true },
+    ],
+  },
+};
 
 const BREAKDOWN = [
   { name: 'Food', pct: 36, color: '#141413' },
@@ -41,7 +85,8 @@ export default function InsightsScreen() {
   const [period, setPeriod] = useState<PeriodTab>('Month');
 
   const sym = selectedCurrency.symbol;
-  const maxBar = 18;
+  const activePeriod = PERIOD_DATA[period];
+  const displayTotal = activePeriod.total ?? totalSpent;
   const isInsufficientData = transactions.length < 3;
 
   return (
@@ -138,13 +183,16 @@ export default function InsightsScreen() {
         ) : (
           <>
             {/* Spending Trend Card */}
-            <View className="bg-white border border-warm-border rounded-3xl p-5">
+            <Animated.View
+              entering={FadeInDown.duration(260)}
+              className="bg-white border border-warm-border rounded-3xl p-5"
+            >
               <Text className="text-[13.5px] text-warm-gray">
-                Spent in November so far
+                {activePeriod.subtitle}
               </Text>
               <Text className="mt-1 text-[28px] font-bold tracking-tight text-charcoal">
                 {sym}
-                {totalSpent.toLocaleString('en-US', {
+                {displayTotal.toLocaleString('en-US', {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}
@@ -152,14 +200,17 @@ export default function InsightsScreen() {
               <View className="flex-row items-center gap-1 mt-1">
                 <ArrowDown size={13} color="#66655E" strokeWidth={2.2} />
                 <Text className="text-[13px] text-warm-gray">
-                  {sym}1,204 less than October
+                  {sym}
+                  {activePeriod.delta}
                 </Text>
               </View>
 
               {/* Bar Chart */}
               <View className="flex-row items-end justify-between mt-7 h-[150px] gap-2">
-                {MONTHLY_BARS.map((bar) => {
-                  const heightPct = Math.round((bar.value / maxBar) * 100);
+                {activePeriod.bars.map((bar) => {
+                  const heightPct = Math.round(
+                    (bar.value / activePeriod.maxBar) * 100
+                  );
                   return (
                     <View key={bar.label} className="flex-1 items-center">
                       <Text className="text-[11px] font-medium text-warm-gray mb-1.5">
@@ -188,7 +239,7 @@ export default function InsightsScreen() {
                   );
                 })}
               </View>
-            </View>
+            </Animated.View>
 
             {/* Where It Went */}
             <Text className="mt-6 mb-3 text-[18px] font-bold text-charcoal">

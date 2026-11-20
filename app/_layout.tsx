@@ -69,6 +69,13 @@ function RootLayoutNav() {
             <Stack.Screen name="settings" options={{ headerShown: false }} />
             <Stack.Screen name="backup" options={{ headerShown: false }} />
             <Stack.Screen name="wallets" options={{ headerShown: false }} />
+            <Stack.Screen name="categories" options={{ headerShown: false }} />
+            <Stack.Screen name="savings-goals" options={{ headerShown: false }} />
+            <Stack.Screen name="recurring-bills" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="scan-receipt"
+              options={{ presentation: 'fullScreenModal', headerShown: false }}
+            />
             <Stack.Screen
               name="lock"
               options={{ presentation: 'fullScreenModal', headerShown: false }}

@@ -1,19 +1,102 @@
 import React, { useState } from 'react';
-import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  Share,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import {
   AlertTriangle,
+  Check,
   ChevronLeft,
   Download,
   ShieldCheck,
   Table,
   Upload,
+  X,
 } from 'lucide-react-native';
+import { useBudget } from '@/context/BudgetContext';
 
 export default function BackupScreen() {
+  const { transactions, categories, wallets, goals, bills } = useBudget();
+
   const [passwordLock, setPasswordLock] = useState(true);
   const [weeklyReminder, setWeeklyReminder] = useState(true);
+  const [lastBackupLabel, setLastBackupLabel] = useState('Tue, Nov 17');
+  const [backupFileName, setBackupFileName] = useState(
+    'eunox-2026-11-17.eunox'
+  );
+  const [backupSizeKb, setBackupSizeKb] = useState(184);
+  const [statusBanner, setStatusBanner] = useState<string | null>(null);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [restorePassword, setRestorePassword] = useState('');
+
+  const handleBackupNow = async () => {
+    const payload = JSON.stringify({
+      version: '1.0',
+      encrypted: passwordLock,
+      exportedAt: new Date().toISOString(),
+      transactions,
+      categories,
+      wallets,
+      goals,
+      bills,
+    });
+    const kb = Math.max(1, Math.round(payload.length / 1024));
+    const fileName = 'eunox-2026-11-20.eunox';
+    setLastBackupLabel('Today, just now');
+    setBackupFileName(fileName);
+    setBackupSizeKb(kb);
+    setStatusBanner(`Saved ${fileName} (${kb} KB)`);
+
+    try {
+      await Share.share({
+        title: fileName,
+        message: payload,
+      });
+    } catch {
+      // User dismissed share sheet
+    }
+  };
+
+  const handleExportCsv = async () => {
+    const header = 'Date,Title,Category,Type,Wallet,Amount,Note';
+    const rows = transactions.map((t) =>
+      [
+        t.fullDate ?? t.dateLabel,
+        `"${t.title.replace(/"/g, '""')}"`,
+        t.category,
+        t.type,
+        t.wallet,
+        t.amount.toFixed(2),
+        `"${(t.note ?? '').replace(/"/g, '""')}"`,
+      ].join(',')
+    );
+    const csv = [header, ...rows].join('\n');
+    setStatusBanner(`Prepared CSV with ${transactions.length} transactions`);
+
+    try {
+      await Share.share({
+        title: 'eunox-transactions.csv',
+        message: csv,
+      });
+    } catch {
+      // User dismissed share sheet
+    }
+  };
+
+  const handleConfirmRestore = () => {
+    if (passwordLock && !restorePassword.trim()) return;
+    setRestorePassword('');
+    setShowRestoreModal(false);
+    setStatusBanner('Restored data from local backup');
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-cream">
@@ -36,6 +119,20 @@ export default function BackupScreen() {
           </Text>
         </View>
 
+        {statusBanner ? (
+          <View className="mb-4 bg-nox-lime rounded-2xl px-4 py-3 flex-row items-center justify-between">
+            <View className="flex-row items-center gap-2 flex-1 pr-2">
+              <Check size={16} color="#141413" strokeWidth={2.5} />
+              <Text className="text-[13.5px] font-semibold text-charcoal">
+                {statusBanner}
+              </Text>
+            </View>
+            <Pressable onPress={() => setStatusBanner(null)}>
+              <X size={16} color="#141413" />
+            </Pressable>
+          </View>
+        ) : null}
+
         {/* Backup Status Card */}
         <View className="bg-white border border-warm-border rounded-3xl p-4">
           <View className="flex-row items-center gap-3">
@@ -44,21 +141,16 @@ export default function BackupScreen() {
             </View>
             <View className="flex-1">
               <Text className="text-[15.5px] font-bold text-charcoal">
-                Last backup: Tue, Nov 17
+                Last backup: {lastBackupLabel}
               </Text>
               <Text className="text-[13px] text-warm-gray mt-0.5">
-                eunox-2026-11-17.eunox · 184 KB
+                {backupFileName} · {backupSizeKb} KB
               </Text>
             </View>
           </View>
 
           <Pressable
-            onPress={() =>
-              Alert.alert(
-                'Backup saved',
-                'Created eunox-2026-11-20.eunox on your device.'
-              )
-            }
+            onPress={handleBackupNow}
             className="mt-4 bg-charcoal rounded-full h-[50px] flex-row items-center justify-center gap-2 active:opacity-85"
           >
             <Upload size={17} color="#FFFFFF" strokeWidth={2.1} />
@@ -117,9 +209,7 @@ export default function BackupScreen() {
 
         <View className="gap-3">
           <Pressable
-            onPress={() =>
-              Alert.alert('Export CSV', 'Exported November transactions to CSV.')
-            }
+            onPress={handleExportCsv}
             className="bg-white border border-warm-border rounded-2xl px-4 py-4 flex-row items-center gap-3 active:opacity-75"
           >
             <Table size={19} color="#141413" strokeWidth={1.9} />
@@ -129,12 +219,7 @@ export default function BackupScreen() {
           </Pressable>
 
           <Pressable
-            onPress={() =>
-              Alert.alert(
-                'Restore from backup',
-                'Choose a .eunox backup file from your device.'
-              )
-            }
+            onPress={() => setShowRestoreModal(true)}
             className="bg-white border border-warm-border rounded-2xl px-4 py-4 flex-row items-center gap-3 active:opacity-75"
           >
             <Download size={19} color="#141413" strokeWidth={1.9} />
@@ -152,6 +237,51 @@ export default function BackupScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      {/* Restore Confirmation Modal */}
+      <Modal
+        visible={showRestoreModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRestoreModal(false)}
+      >
+        <View className="flex-1 bg-black/40 justify-end">
+          <View className="bg-cream rounded-t-3xl p-6 pb-8">
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-[18px] font-bold text-charcoal">
+                Restore from {backupFileName}
+              </Text>
+              <Pressable onPress={() => setShowRestoreModal(false)}>
+                <X size={20} color="#141413" />
+              </Pressable>
+            </View>
+
+            <Text className="text-[14px] text-warm-gray mb-4">
+              This will restore your local budget snapshot from {lastBackupLabel}.
+            </Text>
+
+            {passwordLock ? (
+              <TextInput
+                value={restorePassword}
+                onChangeText={setRestorePassword}
+                secureTextEntry
+                placeholder="Enter backup password"
+                placeholderTextColor="#8A8880"
+                className="bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-4"
+              />
+            ) : null}
+
+            <Pressable
+              onPress={handleConfirmRestore}
+              className="bg-charcoal rounded-full h-12 items-center justify-center active:opacity-85"
+            >
+              <Text className="text-white text-[15px] font-semibold">
+                Restore backup
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

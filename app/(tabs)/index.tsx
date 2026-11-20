@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Redirect, router } from 'expo-router';
 import {
   ArrowDownLeft,
@@ -35,6 +36,8 @@ function getCategoryIcon(category: string) {
   }
 }
 
+const MONTHS = ['November', 'October', 'September'];
+
 export default function HomeScreen() {
   const { hasCompletedOnboarding, selectedCurrency } = useOnboarding();
   const {
@@ -47,6 +50,9 @@ export default function HomeScreen() {
     hideAmountsOnHome,
     noxSuggestionsEnabled,
   } = useBudget();
+
+  const [monthIdx, setMonthIdx] = useState(0);
+  const [revealBalance, setRevealBalance] = useState(false);
 
   if (!hasCompletedOnboarding) {
     return <Redirect href="/onboarding" />;
@@ -74,9 +80,12 @@ export default function HomeScreen() {
             <Text className="text-[13px] font-medium text-warm-gray">
               {isEmpty ? 'Welcome to Eunox' : 'Good evening'}
             </Text>
-            <Pressable className="flex-row items-center gap-1 mt-0.5">
+            <Pressable
+              onPress={() => setMonthIdx((prev) => (prev + 1) % MONTHS.length)}
+              className="flex-row items-center gap-1 mt-0.5 active:opacity-70"
+            >
               <Text className="text-[24px] font-bold tracking-tight text-charcoal">
-                November
+                {MONTHS[monthIdx]}
               </Text>
               {!isEmpty ? (
                 <ChevronDown size={18} color="#141413" strokeWidth={2.2} />
@@ -105,21 +114,31 @@ export default function HomeScreen() {
         </View>
 
         {/* Hero Dark Card */}
-        <View className="bg-charcoal rounded-3xl p-5">
+        <Animated.View
+          entering={FadeInDown.duration(280)}
+          className="bg-charcoal rounded-3xl p-5"
+        >
           <Text className="text-[13px] font-medium text-[#A8A69E]">
             Left to spend this month
           </Text>
 
-          <View className="flex-row items-baseline mt-1.5">
+          <Pressable
+            onPress={() => {
+              if (hideAmountsOnHome) setRevealBalance((prev) => !prev);
+            }}
+            className="flex-row items-baseline mt-1.5"
+          >
             <Text className="text-[40px] leading-[46px] font-bold tracking-tight text-white">
-              {hideAmountsOnHome ? `${sym}••••` : `${sym}${leftParts.whole}`}
+              {hideAmountsOnHome && !revealBalance
+                ? `${sym}••••`
+                : `${sym}${leftParts.whole}`}
             </Text>
-            {!hideAmountsOnHome ? (
+            {!(hideAmountsOnHome && !revealBalance) ? (
               <Text className="text-[34px] leading-[42px] font-bold text-[#8A8880]">
                 .{leftParts.dec}
               </Text>
             ) : null}
-          </View>
+          </Pressable>
 
           {/* Progress Bar */}
           <View className="h-[7px] rounded-full bg-[#30302D] mt-4 overflow-hidden">
@@ -158,7 +177,7 @@ export default function HomeScreen() {
               </View>
             </>
           ) : null}
-        </View>
+        </Animated.View>
 
         {isEmpty ? (
           <View className="items-center justify-center mt-16 px-4">

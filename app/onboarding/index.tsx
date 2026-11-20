@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Download, MessageSquare, Smartphone, WifiOff } from 'lucide-react-native';
@@ -26,10 +26,7 @@ export default function OnboardingWelcomeScreen() {
   };
 
   const handleRestoreBackup = () => {
-    Alert.alert(
-      'Restore from backup',
-      'Select an Eunox backup file from your device to restore your local budget.'
-    );
+    router.push('/backup');
   };
 
   return (

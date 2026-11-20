@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
+import { Href, router } from 'expo-router';
 import {
   Calendar,
   Check,
@@ -35,14 +36,21 @@ const KEYPAD_ROWS = [
 
 export default function AddTransactionModal() {
   const { selectedCurrency } = useOnboarding();
-  const { addTransaction, deleteTransaction, categories, daysLeft } = useBudget();
+  const { addTransaction, deleteTransaction, categories, wallets, daysLeft } =
+    useBudget();
   const sym = selectedCurrency.symbol;
 
   const [txType, setTxType] = useState<TransactionType>('expense');
   const [amountStr, setAmountStr] = useState('180');
   const [quickText, setQuickText] = useState('lunch 180 yesterday');
   const [selectedCategory, setSelectedCategory] = useState('Food');
+  const [dateLabel, setDateLabel] = useState<'Today' | 'Yesterday'>('Yesterday');
+  const [walletIndex, setWalletIndex] = useState(0);
+  const [showNoteInput, setShowNoteInput] = useState(false);
+  const [note, setNote] = useState('');
   const [savedId, setSavedId] = useState<string | null>(null);
+
+  const selectedWallet = wallets[walletIndex]?.name ?? 'Cash wallet';
 
   const numericAmount = parseFloat(amountStr) || 0;
   const [wholePart, decPart] = numericAmount.toFixed(2).split('.');
@@ -82,8 +90,9 @@ export default function AddTransactionModal() {
       category: txType === 'income' ? 'Income' : selectedCategory,
       amount: numericAmount,
       type: txType,
-      dateLabel: 'Today',
-      wallet: 'Cash wallet',
+      dateLabel,
+      wallet: selectedWallet,
+      note: note.trim() || undefined,
     });
     setSavedId(id);
   };
@@ -127,13 +136,19 @@ export default function AddTransactionModal() {
           </View>
 
           <View className="items-center px-2">
-            <View className="w-16 h-16 rounded-3xl bg-nox-lime border-[1.75px] border-charcoal items-center justify-center">
+            <Animated.View
+              entering={ZoomIn.duration(280)}
+              className="w-16 h-16 rounded-3xl bg-nox-lime border-[1.75px] border-charcoal items-center justify-center"
+            >
               <Check size={28} color="#141413" strokeWidth={2.5} />
-            </View>
+            </Animated.View>
 
-            <Text className="mt-5 text-[22px] font-bold text-charcoal">
+            <Animated.Text
+              entering={FadeIn.delay(80).duration(220)}
+              className="mt-5 text-[22px] font-bold text-charcoal"
+            >
               Saved
-            </Text>
+            </Animated.Text>
             <Text className="mt-1.5 text-[36px] font-bold tracking-tight text-charcoal">
               {sym}
               {numericAmount.toLocaleString('en-US', {
@@ -142,7 +157,7 @@ export default function AddTransactionModal() {
               })}
             </Text>
             <Text className="mt-1.5 text-[14px] text-warm-gray">
-              {selectedCategory} · Thu, Nov 19 · Cash wallet
+              {selectedCategory} · {dateLabel} · {selectedWallet}
             </Text>
 
             {budgetCat ? (
@@ -257,6 +272,7 @@ export default function AddTransactionModal() {
             </View>
 
             <Pressable
+              onPress={() => router.push('/scan-receipt' as Href)}
               accessibilityLabel="Scan receipt"
               className="w-10 h-10 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
             >
@@ -345,25 +361,52 @@ export default function AddTransactionModal() {
 
           {/* Metadata Row */}
           <View className="flex-row items-center gap-2 mt-3.5">
-            <View className="flex-row items-center gap-1.5 bg-[#EFECE4] rounded-xl px-3 py-2">
+            <Pressable
+              onPress={() =>
+                setDateLabel((prev) =>
+                  prev === 'Yesterday' ? 'Today' : 'Yesterday'
+                )
+              }
+              className="flex-row items-center gap-1.5 bg-[#EFECE4] rounded-xl px-3 py-2 active:opacity-75"
+            >
               <Calendar size={14} color="#66655E" strokeWidth={2} />
               <Text className="text-[12.5px] font-medium text-charcoal">
-                Yesterday
+                {dateLabel}
               </Text>
-            </View>
-            <View className="flex-row items-center gap-1.5 bg-[#EFECE4] rounded-xl px-3 py-2">
+            </Pressable>
+            <Pressable
+              onPress={() =>
+                setWalletIndex((prev) => (prev + 1) % Math.max(1, wallets.length))
+              }
+              className="flex-row items-center gap-1.5 bg-[#EFECE4] rounded-xl px-3 py-2 active:opacity-75"
+            >
               <Wallet size={14} color="#66655E" strokeWidth={2} />
               <Text className="text-[12.5px] font-medium text-charcoal">
-                Cash wallet
+                {selectedWallet}
               </Text>
-            </View>
-            <View className="flex-row items-center gap-1.5 bg-[#EFECE4] rounded-xl px-3 py-2">
-              <Pencil size={14} color="#66655E" strokeWidth={2} />
+            </Pressable>
+            <Pressable
+              onPress={() => setShowNoteInput((prev) => !prev)}
+              className={`flex-row items-center gap-1.5 rounded-xl px-3 py-2 active:opacity-75 ${
+                showNoteInput || note ? 'bg-nox-lime' : 'bg-[#EFECE4]'
+              }`}
+            >
+              <Pencil size={14} color="#141413" strokeWidth={2} />
               <Text className="text-[12.5px] font-medium text-charcoal">
-                Note
+                {note ? 'Note added' : 'Note'}
               </Text>
-            </View>
+            </Pressable>
           </View>
+
+          {showNoteInput ? (
+            <TextInput
+              value={note}
+              onChangeText={setNote}
+              placeholder="Add a short note..."
+              placeholderTextColor="#8A8880"
+              className="mt-2.5 bg-white border border-warm-border rounded-2xl px-3.5 py-2 text-[13.5px] text-charcoal"
+            />
+          ) : null}
         </View>
 
         {/* Numeric Keypad & Save CTA */}
