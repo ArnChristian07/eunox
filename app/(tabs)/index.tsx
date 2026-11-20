@@ -1,31 +1,248 @@
-import { StyleSheet } from 'react-native';
+import React from 'react';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Redirect, router } from 'expo-router';
+import {
+  ArrowDownLeft,
+  Bus,
+  ChevronDown,
+  Search,
+  ShoppingCart,
+  SlidersHorizontal,
+} from 'lucide-react-native';
+import { NoxMiniIcon } from '@/components/NoxMascot';
+import { useBudget } from '@/context/BudgetContext';
+import { useOnboarding } from '@/context/OnboardingContext';
 
-import EditScreenInfo from '@/components/EditScreenInfo';
-import { Text, View } from '@/components/Themed';
-
-export default function TabOneScreen() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Tab One</Text>
-      <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
-      <EditScreenInfo path="app/(tabs)/index.tsx" />
-    </View>
-  );
+function splitAmountParts(amount: number) {
+  const fixed = amount.toFixed(2);
+  const [whole, dec] = fixed.split('.');
+  return {
+    whole: Number(whole).toLocaleString('en-US'),
+    dec,
+  };
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  separator: {
-    marginVertical: 30,
-    height: 1,
-    width: '80%',
-  },
-});
+function getCategoryIcon(category: string) {
+  switch (category.toLowerCase()) {
+    case 'food':
+      return ShoppingCart;
+    case 'transport':
+      return Bus;
+    default:
+      return ShoppingCart;
+  }
+}
+
+export default function HomeScreen() {
+  const { hasCompletedOnboarding, selectedCurrency } = useOnboarding();
+  const {
+    totalBudget,
+    totalSpent,
+    leftToSpend,
+    daysLeft,
+    safeToSpendToday,
+    transactions,
+    hideAmountsOnHome,
+    noxSuggestionsEnabled,
+  } = useBudget();
+
+  if (!hasCompletedOnboarding) {
+    return <Redirect href="/onboarding" />;
+  }
+
+  const sym = selectedCurrency.symbol;
+  const leftParts = splitAmountParts(leftToSpend);
+  const spentPercent = Math.min(100, Math.round((totalSpent / totalBudget) * 100));
+
+  return (
+    <SafeAreaView edges={['top']} className="flex-1 bg-cream">
+      <ScrollView
+        className="flex-1 px-5"
+        contentContainerStyle={{ paddingBottom: 24 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header */}
+        <View className="flex-row items-center justify-between pt-2 pb-4">
+          <View>
+            <Text className="text-[13px] font-medium text-warm-gray">
+              Good evening
+            </Text>
+            <Pressable className="flex-row items-center gap-1 mt-0.5">
+              <Text className="text-[24px] font-bold tracking-tight text-charcoal">
+                November
+              </Text>
+              <ChevronDown size={18} color="#141413" strokeWidth={2.2} />
+            </Pressable>
+          </View>
+
+          <View className="flex-row items-center gap-2.5">
+            <Pressable
+              onPress={() => router.push('/transactions')}
+              accessibilityLabel="Search transactions"
+              className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
+            >
+              <Search size={19} color="#141413" strokeWidth={2} />
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/settings')}
+              accessibilityLabel="Settings"
+              className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
+            >
+              <SlidersHorizontal size={19} color="#141413" strokeWidth={2} />
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Hero Dark Card */}
+        <View className="bg-charcoal rounded-3xl p-5">
+          <Text className="text-[13px] font-medium text-[#A8A69E]">
+            Left to spend this month
+          </Text>
+
+          <View className="flex-row items-baseline mt-1.5">
+            <Text className="text-[40px] leading-[46px] font-bold tracking-tight text-white">
+              {hideAmountsOnHome ? `${sym}••••` : `${sym}${leftParts.whole}`}
+            </Text>
+            {!hideAmountsOnHome ? (
+              <Text className="text-[34px] leading-[42px] font-bold text-[#8A8880]">
+                .{leftParts.dec}
+              </Text>
+            ) : null}
+          </View>
+
+          {/* Progress Bar */}
+          <View className="h-[7px] rounded-full bg-[#30302D] mt-4 overflow-hidden">
+            <View
+              style={{ width: `${spentPercent}%` }}
+              className="h-full rounded-full bg-nox-lime"
+            />
+          </View>
+
+          <View className="flex-row items-center justify-between mt-3">
+            <Text className="text-[12.5px] text-[#A8A69E]">
+              {sym}
+              {totalSpent.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}{' '}
+              spent of {sym}
+              {totalBudget.toLocaleString('en-US')}
+            </Text>
+            <Text className="text-[12.5px] text-[#A8A69E]">
+              {daysLeft} days left
+            </Text>
+          </View>
+
+          <View className="h-[1px] bg-[#2C2C2A] my-4" />
+
+          <View className="flex-row items-center justify-between">
+            <Text className="text-[14px] font-medium text-white/90">
+              Safe to spend today
+            </Text>
+            <Text className="text-[17px] font-bold text-nox-lime">
+              {sym}
+              {safeToSpendToday.toLocaleString('en-US')}
+            </Text>
+          </View>
+        </View>
+
+        {/* Nox Noticed Card */}
+        {noxSuggestionsEnabled ? (
+          <View className="mt-4 bg-white border border-warm-border rounded-3xl p-4 flex-row gap-3.5">
+            <View className="pt-0.5">
+              <NoxMiniIcon size={38} />
+            </View>
+            <View className="flex-1">
+              <Text className="text-[12.5px] font-medium text-warm-gray">
+                Nox noticed
+              </Text>
+              <Text className="mt-1 text-[14.5px] leading-[20px] text-charcoal">
+                Food is at 82% with 11 days to go. Cooking at home twice this
+                week keeps you on budget.
+              </Text>
+              <Pressable
+                onPress={() => router.push('/(tabs)/nox')}
+                className="mt-2.5 self-start active:opacity-70"
+              >
+                <Text className="text-[14px] font-bold text-charcoal underline">
+                  Ask Nox
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        {/* Recent Transactions */}
+        <View className="mt-6">
+          <View className="flex-row items-center justify-between mb-3">
+            <Text className="text-[18px] font-bold text-charcoal">Recent</Text>
+            <Pressable
+              onPress={() => router.push('/transactions')}
+              className="active:opacity-70"
+            >
+              <Text className="text-[13.5px] font-medium text-warm-gray">
+                See all
+              </Text>
+            </Pressable>
+          </View>
+
+          <View className="gap-3.5">
+            {transactions.slice(0, 6).map((tx) => {
+              const isIncome = tx.type === 'income';
+              const Icon = isIncome
+                ? ArrowDownLeft
+                : getCategoryIcon(tx.category);
+
+              return (
+                <Pressable
+                  key={tx.id}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/edit-transaction',
+                      params: { id: tx.id },
+                    })
+                  }
+                  className="flex-row items-center justify-between active:opacity-70"
+                >
+                  <View className="flex-row items-center gap-3 flex-1 pr-2">
+                    <View
+                      className={`w-11 h-11 rounded-2xl items-center justify-center ${
+                        isIncome
+                          ? 'bg-nox-lime'
+                          : 'bg-white border border-warm-border'
+                      }`}
+                    >
+                      <Icon size={19} color="#141413" strokeWidth={1.9} />
+                    </View>
+
+                    <View className="flex-1">
+                      <Text
+                        numberOfLines={1}
+                        className="text-[15px] font-semibold text-charcoal"
+                      >
+                        {tx.title}
+                      </Text>
+                      <Text className="text-[12.5px] text-warm-gray mt-0.5">
+                        {tx.category} · {tx.dateLabel}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text className="text-[15px] font-semibold text-charcoal">
+                    {isIncome ? '+' : '-'}
+                    {sym}
+                    {tx.amount.toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
