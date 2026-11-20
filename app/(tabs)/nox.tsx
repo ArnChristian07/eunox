@@ -1,29 +1,29 @@
-import React, { useEffect, useRef, useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Animated, {
-  FadeInDown,
-  useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
-import { router } from 'expo-router';
-import { ArrowUp, History, Square } from 'lucide-react-native';
-import { NoxMiniIcon, NoxThinkingIcon } from '@/components/NoxMascot';
+import { NoxChatMascot, NoxHomeAvatar, NoxThinkingIcon } from '@/components/NoxMascot';
 import { useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
 import { answerQuestion, NoxReply } from '@/lib/nox';
+import { router } from 'expo-router';
+import { ArrowUp, History, Square } from 'lucide-react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+    Keyboard,
+    KeyboardAvoidingView,
+    Pressable,
+    ScrollView,
+    Text,
+    TextInput,
+    View,
+} from 'react-native';
+import Animated, {
+    FadeInDown,
+    useAnimatedStyle,
+    useSharedValue,
+    withDelay,
+    withRepeat,
+    withSequence,
+    withTiming,
+} from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface ChatMessage extends Partial<NoxReply> {
   id: string;
@@ -74,6 +74,7 @@ export default function NoxChatScreen() {
 
   const nextIdRef = useRef(1);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollViewRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -85,6 +86,21 @@ export default function NoxChatScreen() {
     },
     []
   );
+
+  useEffect(() => {
+    const sub = Keyboard.addListener('keyboardDidShow', () => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (messages.length > 0 || isThinking) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 60);
+    }
+  }, [messages.length, isThinking]);
 
   const stopThinking = () => {
     if (timerRef.current) {
@@ -141,8 +157,8 @@ export default function NoxChatScreen() {
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-cream">
       <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+        behavior="padding"
       >
         {/* Header */}
         <View className="flex-row items-center justify-between px-5 pt-2 pb-3">
@@ -150,7 +166,7 @@ export default function NoxChatScreen() {
             {isThinking ? (
               <NoxThinkingIcon size={38} />
             ) : (
-              <NoxMiniIcon size={38} />
+              <NoxHomeAvatar size={38} />
             )}
             <View>
               <Text className="text-[22px] font-bold tracking-tight text-charcoal">
@@ -182,13 +198,15 @@ export default function NoxChatScreen() {
 
         {/* Messages */}
         <ScrollView
+          ref={scrollViewRef}
           className="flex-1 px-5"
           contentContainerStyle={{ paddingVertical: 10, gap: 12, flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           {messages.length === 0 && !isThinking ? (
             <View className="flex-1 items-center justify-center px-6">
-              <NoxMiniIcon size={56} />
+              <NoxChatMascot size={220} />
               <Text className="mt-4 text-[18px] font-bold text-charcoal">
                 Ask Nox about your money
               </Text>

@@ -1,5 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { FlatList, Pressable, Text, TextInput, View } from 'react-native';
+import {
+  FlatList,
+  KeyboardAvoidingView,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Check, ChevronLeft, Search, X } from 'lucide-react-native';
@@ -102,7 +109,8 @@ export default function OnboardingCurrencyScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-cream">
-      <View className="flex-1 px-6 pb-6">
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+        <View className="flex-1 px-6 pb-6">
         {isEditing ? (
           <View className="flex-row items-center gap-3 pt-2 pb-5">
             <Pressable
@@ -194,7 +202,8 @@ export default function OnboardingCurrencyScreen() {
               : `Continue with ${activeCurrency.code}`}
           </Text>
         </Pressable>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Pressable,
   ScrollView,
@@ -369,8 +370,15 @@ export default function WalletsScreen() {
         animationType="fade"
         onRequestClose={() => setShowAddModal(false)}
       >
-        <View className="flex-1 bg-black/40 justify-end">
-          <View className="bg-cream rounded-t-3xl p-6 pb-8">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+          <View className="flex-1 bg-black/40 justify-end">
+            <ScrollView
+              style={{ flexGrow: 0, flexShrink: 1 }}
+              className="bg-cream rounded-t-3xl"
+              contentContainerStyle={{ padding: 24, paddingBottom: 32 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
             <View className="flex-row items-center justify-between mb-4">
               <Text className="text-[18px] font-bold text-charcoal">
                 {editingWallet ? 'Edit wallet' : 'Add wallet'}
@@ -469,8 +477,9 @@ export default function WalletsScreen() {
                 </Pressable>
               </View>
             ) : null}
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Transfer Modal */}
@@ -480,8 +489,15 @@ export default function WalletsScreen() {
         animationType="fade"
         onRequestClose={() => setShowTransferModal(false)}
       >
-        <View className="flex-1 bg-black/45 justify-end">
-          <View className="bg-cream rounded-t-3xl px-6 pt-3 pb-8">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+          <View className="flex-1 bg-black/45 justify-end">
+            <ScrollView
+              style={{ flexGrow: 0, flexShrink: 1 }}
+              className="bg-cream rounded-t-3xl"
+              contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 12, paddingBottom: 32 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
             <View className="w-10 h-1 rounded-full bg-[#D5D3CA] self-center mb-4" />
 
             <View className="flex-row items-center justify-between mb-4">
@@ -624,8 +640,9 @@ export default function WalletsScreen() {
                 Transfer {formatMoney(parseAmount(transferAmount), sym)}
               </Text>
             </Pressable>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

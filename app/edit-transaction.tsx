@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  KeyboardAvoidingView,
   Modal,
   Pressable,
   ScrollView,
@@ -182,8 +183,12 @@ function EditTransactionForm({ tx }: { tx: Transaction }) {
 
   return (
     <SafeAreaView className="flex-1 bg-cream">
-      <View className="flex-1 px-5 pb-6 justify-between">
-        <ScrollView showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+        <View className="flex-1 px-5 pb-6 justify-between">
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
           {/* Header */}
           <View className="flex-row items-center justify-between pt-2 pb-4">
             <View className="flex-row items-center gap-3">
@@ -364,7 +369,8 @@ function EditTransactionForm({ tx }: { tx: Transaction }) {
             </Text>
           </Pressable>
         </View>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
 
       {/* Delete Confirmation Modal */}
       <Modal

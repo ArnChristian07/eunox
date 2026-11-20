@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import { NoxHomeAvatar, NoxSurprisedMascot } from '@/components/NoxMascot';
+import { useBudget } from '@/context/BudgetContext';
+import { useOnboarding } from '@/context/OnboardingContext';
+import { formatRelativeDay, getGreeting } from '@/lib/dates';
+import { formatMoney } from '@/lib/format';
+import { getHomeInsight } from '@/lib/nox';
 import { Redirect, router } from 'expo-router';
 import {
   ArrowDownLeft,
@@ -11,12 +13,10 @@ import {
   ShoppingCart,
   SlidersHorizontal,
 } from 'lucide-react-native';
-import { NoxMiniIcon, NoxSurprisedMascot } from '@/components/NoxMascot';
-import { useBudget } from '@/context/BudgetContext';
-import { useOnboarding } from '@/context/OnboardingContext';
-import { formatRelativeDay, getGreeting } from '@/lib/dates';
-import { formatMoney } from '@/lib/format';
-import { getHomeInsight } from '@/lib/nox';
+import { useState } from 'react';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 function splitAmountParts(amount: number, decimals = 2) {
   const safeDecimals = Math.max(0, Math.min(3, decimals));
@@ -210,7 +210,7 @@ export default function HomeScreen() {
             {insight ? (
               <View className="mt-4 bg-white border border-warm-border rounded-3xl p-4 flex-row gap-3.5">
                 <View className="pt-0.5">
-                  <NoxMiniIcon size={38} />
+                  <NoxHomeAvatar size={38} />
                 </View>
                 <View className="flex-1">
                   <Text className="text-[12.5px] font-medium text-warm-gray">

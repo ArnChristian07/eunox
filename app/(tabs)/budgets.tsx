@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Href, router } from 'expo-router';
-import { AlertTriangle, Plus } from 'lucide-react-native';
 import { NoxMiniIcon } from '@/components/NoxMascot';
 import { CategoryBudget, useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
 import { formatMoney } from '@/lib/format';
+import { Href, router } from 'expo-router';
+import { AlertTriangle, Plus } from 'lucide-react-native';
+import { useState } from 'react';
+import { Pressable, ScrollView, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 function formatCompactMoney(amount: number, symbol: string): string {
   const hasDecimals = amount % 1 !== 0;

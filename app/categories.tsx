@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Pressable,
   ScrollView,
@@ -283,8 +284,15 @@ export default function CategoriesScreen() {
         animationType="fade"
         onRequestClose={() => setModalVisible(false)}
       >
-        <View className="flex-1 bg-black/45 justify-end">
-          <View className="bg-cream rounded-t-3xl px-6 pt-3 pb-8">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+          <View className="flex-1 bg-black/45 justify-end">
+            <ScrollView
+              style={{ flexGrow: 0, flexShrink: 1 }}
+              className="bg-cream rounded-t-3xl"
+              contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 12, paddingBottom: 32 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
             <View className="w-10 h-1 rounded-full bg-[#D5D3CA] self-center mb-4" />
 
             <View className="flex-row items-center justify-between mb-5">
@@ -408,8 +416,9 @@ export default function CategoriesScreen() {
                 </Text>
               </Pressable>
             ) : null}
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -119,8 +118,8 @@ export default function OnboardingBudgetScreen() {
   return (
     <SafeAreaView className="flex-1 bg-cream">
       <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+        behavior="padding"
       >
         <View className="flex-1 px-6 pb-6 justify-between">
           <ScrollView

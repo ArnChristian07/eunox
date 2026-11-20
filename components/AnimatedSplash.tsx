@@ -70,7 +70,7 @@ export function AnimatedSplash({ onFinish }: AnimatedSplashProps) {
         {/* Center Mascot & Wordmark */}
         <View className="items-center">
           <Animated.View entering={ZoomIn.duration(400)}>
-            <NoxSplashMascot size={104} />
+            <NoxSplashMascot size={140} />
           </Animated.View>
 
           <Animated.Text

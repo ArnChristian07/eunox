@@ -343,8 +343,8 @@ export default function ScanReceiptScreen() {
       ) : null}
 
       <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+        behavior="padding"
       >
         <SafeAreaView edges={['top']} className="flex-1 justify-between">
           {/* Header */}
@@ -404,9 +404,11 @@ export default function ScanReceiptScreen() {
 
           {step === 'review' && draft ? (
             <ScrollView
-              className="flex-grow-0 bg-cream rounded-t-3xl"
+              style={{ flexGrow: 0, flexShrink: 1 }}
+              className="bg-cream rounded-t-3xl mt-3"
               contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 32 }}
               keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
               <View className="flex-row items-center gap-2.5">
                 <NoxMiniIcon size={24} />

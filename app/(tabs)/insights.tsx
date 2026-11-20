@@ -3,7 +3,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ArrowDown, ArrowUp } from 'lucide-react-native';
-import { NoxMiniIcon } from '@/components/NoxMascot';
+import { NoxHomeAvatar } from '@/components/NoxMascot';
 import { Transaction, useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
 import {
@@ -291,7 +291,7 @@ export default function InsightsScreen() {
             </View>
 
             <View className="mt-4 bg-white border border-warm-border rounded-3xl p-4 flex-row items-center gap-3.5">
-              <NoxMiniIcon size={34} />
+              <NoxHomeAvatar size={38} />
               <Text className="flex-1 text-[14px] leading-[20px] text-charcoal">
                 I&apos;ll write your first recap after{' '}
                 <Text className="font-bold">
@@ -411,7 +411,7 @@ export default function InsightsScreen() {
             {recap ? (
               <View className="mt-6 bg-charcoal rounded-3xl p-4 flex-row gap-3.5">
                 <View className="pt-0.5">
-                  <NoxMiniIcon size={34} />
+                  <NoxHomeAvatar size={38} />
                 </View>
                 <View className="flex-1">
                   <Text className="text-[13px] font-semibold text-nox-lime">

@@ -1,5 +1,14 @@
-import React, { useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 import { Href, router } from 'expo-router';
@@ -86,11 +95,29 @@ export default function AddTransactionModal() {
   );
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [note, setNote] = useState('');
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [savedKind, setSavedKind] = useState<TransactionType>('expense');
   const [savedAmount, setSavedAmount] = useState(0);
   const [savedSummary, setSavedSummary] = useState('');
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => setIsKeyboardOpen(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setIsKeyboardOpen(false);
+      setIsInputFocused(false);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  const hideCustomKeypad = isInputFocused || isKeyboardOpen;
 
   const activeCategoryNames = txType === 'income' ? incomeNames : expenseNames;
   const effectiveCategory = activeCategoryNames.some(
@@ -376,268 +403,283 @@ export default function AddTransactionModal() {
 
   return (
     <SafeAreaView className="flex-1 bg-cream">
-      <View className="flex-1 px-5 pt-2 pb-4 justify-between">
-        {/* Top Bar */}
-        <View>
-          <View className="flex-row items-center justify-between">
-            <Pressable
-              onPress={() => router.back()}
-              accessibilityLabel="Close"
-              className="w-10 h-10 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
-            >
-              <X size={19} color="#141413" strokeWidth={2} />
-            </Pressable>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+        <View className="flex-1 px-5 pt-2 pb-4 justify-between">
+          {/* Top Bar & Form */}
+          <ScrollView
+            className="flex-1"
+            contentContainerStyle={{ paddingBottom: 12 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View className="flex-row items-center justify-between">
+              <Pressable
+                onPress={() => router.back()}
+                accessibilityLabel="Close"
+                className="w-10 h-10 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
+              >
+                <X size={19} color="#141413" strokeWidth={2} />
+              </Pressable>
 
-            <View className="flex-row bg-[#EAE8E1] p-1 rounded-full">
-              {(['expense', 'income', 'transfer'] as TransactionType[]).map(
-                (t) => {
-                  const active = txType === t;
-                  return (
-                    <Pressable
-                      key={t}
-                      onPress={() => {
-                        setTxType(t);
-                        setFormError(null);
-                      }}
-                      className={`px-3.5 py-1.5 rounded-full ${
-                        active ? 'bg-white' : 'bg-transparent'
-                      }`}
-                    >
-                      <Text
-                        className={`text-[13px] font-semibold capitalize ${
-                          active ? 'text-charcoal' : 'text-warm-gray'
+              <View className="flex-row bg-[#EAE8E1] p-1 rounded-full">
+                {(['expense', 'income', 'transfer'] as TransactionType[]).map(
+                  (t) => {
+                    const active = txType === t;
+                    return (
+                      <Pressable
+                        key={t}
+                        onPress={() => {
+                          setTxType(t);
+                          setFormError(null);
+                        }}
+                        className={`px-3.5 py-1.5 rounded-full ${
+                          active ? 'bg-white' : 'bg-transparent'
                         }`}
                       >
-                        {t}
-                      </Text>
-                    </Pressable>
-                  );
-                }
-              )}
-            </View>
+                        <Text
+                          className={`text-[13px] font-semibold capitalize ${
+                            active ? 'text-charcoal' : 'text-warm-gray'
+                          }`}
+                        >
+                          {t}
+                        </Text>
+                      </Pressable>
+                    );
+                  }
+                )}
+              </View>
 
-            <Pressable
-              onPress={() => router.push({ pathname: '/scan-receipt', params: { from: 'add-transaction' } } as Href)}
-              accessibilityLabel="Scan receipt"
-              className="w-10 h-10 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
-            >
-              <ScanLine size={18} color="#141413" strokeWidth={2} />
-            </Pressable>
-          </View>
-
-          {/* Amount Display */}
-          <View className="items-center mt-5">
-            <Text className="text-[13px] font-medium text-warm-gray">
-              Amount
-            </Text>
-            <View className="flex-row items-baseline mt-1">
-              <Text className="text-[42px] leading-[48px] font-bold tracking-tight text-charcoal">
-                {sym}
-                {wholePart}
-              </Text>
-              <Text className="text-[36px] leading-[44px] font-bold text-[#8A8880]">
-                .{decPart}
-              </Text>
-            </View>
-          </View>
-
-          {txType === 'transfer' ? (
-            /* Transfer Wallet Selectors */
-            <View className="mt-4 bg-white border border-warm-border rounded-3xl p-4 gap-3">
               <Pressable
-                onPress={cycleFromWallet}
-                className="flex-row items-center justify-between bg-[#F3F2EC] rounded-2xl px-3.5 py-3 active:opacity-80"
+                onPress={() => router.push({ pathname: '/scan-receipt', params: { from: 'add-transaction' } } as Href)}
+                accessibilityLabel="Scan receipt"
+                className="w-10 h-10 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
               >
-                <View>
-                  <Text className="text-[11.5px] text-warm-gray">From wallet</Text>
-                  <Text className="text-[15px] font-semibold text-charcoal mt-0.5">
-                    {selectedWallet?.name ?? 'No wallet'}
-                  </Text>
-                </View>
-                <Text className="text-[13.5px] font-medium text-warm-gray">
-                  {formatMoney(selectedWallet?.balance ?? 0, sym)}
+                <ScanLine size={18} color="#141413" strokeWidth={2} />
+              </Pressable>
+            </View>
+
+            {/* Amount Display */}
+            <View className="items-center mt-5">
+              <Text className="text-[13px] font-medium text-warm-gray">
+                Amount
+              </Text>
+              <View className="flex-row items-baseline mt-1">
+                <Text className="text-[42px] leading-[48px] font-bold tracking-tight text-charcoal">
+                  {sym}
+                  {wholePart}
                 </Text>
-              </Pressable>
-
-              <View className="items-center -my-1">
-                <ArrowLeftRight size={16} color="#66655E" strokeWidth={2} />
+                <Text className="text-[36px] leading-[44px] font-bold text-[#8A8880]">
+                  .{decPart}
+                </Text>
               </View>
-
-              <Pressable
-                onPress={cycleToWallet}
-                className="flex-row items-center justify-between bg-[#F3F2EC] rounded-2xl px-3.5 py-3 active:opacity-80"
-              >
-                <View>
-                  <Text className="text-[11.5px] text-warm-gray">To wallet</Text>
-                  <Text className="text-[15px] font-semibold text-charcoal mt-0.5">
-                    {destinationWallet?.name ?? 'Add a second wallet'}
-                  </Text>
-                </View>
-                {destinationWallet ? (
-                  <Text className="text-[13.5px] font-medium text-warm-gray">
-                    {formatMoney(destinationWallet.balance, sym)}
-                  </Text>
-                ) : null}
-              </Pressable>
             </View>
-          ) : (
-            <>
-              {/* Nox Quick-Type Card */}
-              <View className="mt-4 bg-white border border-warm-border rounded-3xl p-3.5">
-                <View className="flex-row items-center gap-2">
-                  <NoxMiniIcon size={20} />
-                  <Text className="text-[12.5px] font-medium text-warm-gray">
-                    Or just type it — Nox fills the rest
-                  </Text>
-                </View>
 
-                <TextInput
-                  value={quickText}
-                  onChangeText={handleQuickTextChange}
-                  placeholder={
-                    txType === 'income'
-                      ? 'e.g. salary 25000 today'
-                      : 'e.g. lunch 180 yesterday'
-                  }
-                  placeholderTextColor="#8A8880"
-                  className="mt-2.5 bg-[#F3F2EC] rounded-2xl px-3.5 py-2.5 text-[14.5px] text-charcoal"
-                />
-
-                <View className="flex-row items-center gap-2 mt-2.5">
-                  <View className="bg-nox-lime rounded-full px-3 py-1">
-                    <Text className="text-[12.5px] font-semibold text-charcoal">
-                      {effectiveCategory}
-                    </Text>
-                  </View>
-                  <View className="bg-[#F3F2EC] rounded-full px-3 py-1">
-                    <Text className="text-[12.5px] font-medium text-charcoal">
-                      {formatMoney(numericAmount, sym)}
-                    </Text>
-                  </View>
-                  <View className="bg-[#F3F2EC] rounded-full px-3 py-1">
-                    <Text className="text-[12.5px] font-medium text-charcoal">
-                      {formatShortDate(txDate, today)}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Category Pills */}
-              <View className="flex-row flex-wrap gap-2 mt-4">
-                {activeCategoryNames.map((cat) => {
-                  const active = effectiveCategory === cat;
-                  return (
-                    <Pressable
-                      key={cat}
-                      onPress={() => setSelectedCategory(cat)}
-                      className={`rounded-full px-4 py-2 border ${
-                        active
-                          ? 'bg-charcoal border-charcoal'
-                          : 'bg-white border-warm-border'
-                      }`}
-                    >
-                      <Text
-                        className={`text-[13.5px] font-semibold ${
-                          active ? 'text-white' : 'text-charcoal'
-                        }`}
-                      >
-                        {cat}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              {/* Metadata Row */}
-              <View className="flex-row items-center gap-2 mt-3.5">
-                <Pressable
-                  onPress={() =>
-                    setDateLabel((prev) =>
-                      prev === 'Yesterday' ? 'Today' : 'Yesterday'
-                    )
-                  }
-                  className="flex-row items-center gap-1.5 bg-[#EFECE4] rounded-xl px-3 py-2 active:opacity-75"
-                >
-                  <Calendar size={14} color="#66655E" strokeWidth={2} />
-                  <Text className="text-[12.5px] font-medium text-charcoal">
-                    {dateLabel}
-                  </Text>
-                </Pressable>
+            {txType === 'transfer' ? (
+              /* Transfer Wallet Selectors */
+              <View className="mt-4 bg-white border border-warm-border rounded-3xl p-4 gap-3">
                 <Pressable
                   onPress={cycleFromWallet}
-                  className="flex-row items-center gap-1.5 bg-[#EFECE4] rounded-xl px-3 py-2 active:opacity-75"
+                  className="flex-row items-center justify-between bg-[#F3F2EC] rounded-2xl px-3.5 py-3 active:opacity-80"
                 >
-                  <Wallet size={14} color="#66655E" strokeWidth={2} />
-                  <Text className="text-[12.5px] font-medium text-charcoal">
-                    {selectedWallet?.name ?? 'Wallet'}
+                  <View>
+                    <Text className="text-[11.5px] text-warm-gray">From wallet</Text>
+                    <Text className="text-[15px] font-semibold text-charcoal mt-0.5">
+                      {selectedWallet?.name ?? 'No wallet'}
+                    </Text>
+                  </View>
+                  <Text className="text-[13.5px] font-medium text-warm-gray">
+                    {formatMoney(selectedWallet?.balance ?? 0, sym)}
                   </Text>
                 </Pressable>
+
+                <View className="items-center -my-1">
+                  <ArrowLeftRight size={16} color="#66655E" strokeWidth={2} />
+                </View>
+
                 <Pressable
-                  onPress={() => setShowNoteInput((prev) => !prev)}
-                  className={`flex-row items-center gap-1.5 rounded-xl px-3 py-2 active:opacity-75 ${
-                    showNoteInput || note ? 'bg-nox-lime' : 'bg-[#EFECE4]'
-                  }`}
+                  onPress={cycleToWallet}
+                  className="flex-row items-center justify-between bg-[#F3F2EC] rounded-2xl px-3.5 py-3 active:opacity-80"
                 >
-                  <Pencil size={14} color="#141413" strokeWidth={2} />
-                  <Text className="text-[12.5px] font-medium text-charcoal">
-                    {note ? 'Note added' : 'Note'}
-                  </Text>
+                  <View>
+                    <Text className="text-[11.5px] text-warm-gray">To wallet</Text>
+                    <Text className="text-[15px] font-semibold text-charcoal mt-0.5">
+                      {destinationWallet?.name ?? 'Add a second wallet'}
+                    </Text>
+                  </View>
+                  {destinationWallet ? (
+                    <Text className="text-[13.5px] font-medium text-warm-gray">
+                      {formatMoney(destinationWallet.balance, sym)}
+                    </Text>
+                  ) : null}
                 </Pressable>
               </View>
+            ) : (
+              <>
+                {/* Nox Quick-Type Card */}
+                <View className="mt-4 bg-white border border-warm-border rounded-3xl p-3.5">
+                  <View className="flex-row items-center gap-2">
+                    <NoxMiniIcon size={20} />
+                    <Text className="text-[12.5px] font-medium text-warm-gray">
+                      Or just type it — Nox fills the rest
+                    </Text>
+                  </View>
 
-              {showNoteInput ? (
-                <TextInput
-                  value={note}
-                  onChangeText={setNote}
-                  placeholder="Add a short note..."
-                  placeholderTextColor="#8A8880"
-                  className="mt-2.5 bg-white border border-warm-border rounded-2xl px-3.5 py-2 text-[13.5px] text-charcoal"
-                />
-              ) : null}
-            </>
-          )}
+                  <TextInput
+                    value={quickText}
+                    onChangeText={handleQuickTextChange}
+                    onFocus={() => setIsInputFocused(true)}
+                    onBlur={() => setIsInputFocused(false)}
+                    returnKeyType="done"
+                    placeholder={
+                      txType === 'income'
+                        ? 'e.g. salary 25000 today'
+                        : 'e.g. lunch 180 yesterday'
+                    }
+                    placeholderTextColor="#8A8880"
+                    className="mt-2.5 bg-[#F3F2EC] rounded-2xl px-3.5 py-2.5 text-[14.5px] text-charcoal"
+                  />
 
-          {formError ? (
-            <Text className="mt-2.5 text-center text-[13px] font-semibold text-[#B85318]">
-              {formError}
-            </Text>
-          ) : null}
-        </View>
-
-        {/* Numeric Keypad & Save CTA */}
-        <View>
-          <View className="gap-2">
-            {KEYPAD_ROWS.map((row, rIdx) => (
-              <View key={rIdx} className="flex-row gap-2">
-                {row.map((key) => (
-                  <Pressable
-                    key={key}
-                    onPress={() => handleKeyPress(key)}
-                    className="flex-1 h-12 rounded-2xl bg-white items-center justify-center active:bg-[#EAE8E1]"
-                  >
-                    {key === 'back' ? (
-                      <Delete size={20} color="#141413" strokeWidth={1.9} />
-                    ) : (
-                      <Text className="text-[20px] font-semibold text-charcoal">
-                        {key}
+                  <View className="flex-row items-center gap-2 mt-2.5">
+                    <View className="bg-nox-lime rounded-full px-3 py-1">
+                      <Text className="text-[12.5px] font-semibold text-charcoal">
+                        {effectiveCategory}
                       </Text>
-                    )}
+                    </View>
+                    <View className="bg-[#F3F2EC] rounded-full px-3 py-1">
+                      <Text className="text-[12.5px] font-medium text-charcoal">
+                        {formatMoney(numericAmount, sym)}
+                      </Text>
+                    </View>
+                    <View className="bg-[#F3F2EC] rounded-full px-3 py-1">
+                      <Text className="text-[12.5px] font-medium text-charcoal">
+                        {formatShortDate(txDate, today)}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Category Pills */}
+                <View className="flex-row flex-wrap gap-2 mt-4">
+                  {activeCategoryNames.map((cat) => {
+                    const active = effectiveCategory === cat;
+                    return (
+                      <Pressable
+                        key={cat}
+                        onPress={() => setSelectedCategory(cat)}
+                        className={`rounded-full px-4 py-2 border ${
+                          active
+                            ? 'bg-charcoal border-charcoal'
+                            : 'bg-white border-warm-border'
+                        }`}
+                      >
+                        <Text
+                          className={`text-[13.5px] font-semibold ${
+                            active ? 'text-white' : 'text-charcoal'
+                          }`}
+                        >
+                          {cat}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {/* Metadata Row */}
+                <View className="flex-row items-center gap-2 mt-3.5">
+                  <Pressable
+                    onPress={() =>
+                      setDateLabel((prev) =>
+                        prev === 'Yesterday' ? 'Today' : 'Yesterday'
+                      )
+                    }
+                    className="flex-row items-center gap-1.5 bg-[#EFECE4] rounded-xl px-3 py-2 active:opacity-75"
+                  >
+                    <Calendar size={14} color="#66655E" strokeWidth={2} />
+                    <Text className="text-[12.5px] font-medium text-charcoal">
+                      {dateLabel}
+                    </Text>
                   </Pressable>
+                  <Pressable
+                    onPress={cycleFromWallet}
+                    className="flex-row items-center gap-1.5 bg-[#EFECE4] rounded-xl px-3 py-2 active:opacity-75"
+                  >
+                    <Wallet size={14} color="#66655E" strokeWidth={2} />
+                    <Text className="text-[12.5px] font-medium text-charcoal">
+                      {selectedWallet?.name ?? 'Wallet'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setShowNoteInput((prev) => !prev)}
+                    className={`flex-row items-center gap-1.5 rounded-xl px-3 py-2 active:opacity-75 ${
+                      showNoteInput || note ? 'bg-nox-lime' : 'bg-[#EFECE4]'
+                    }`}
+                  >
+                    <Pencil size={14} color="#141413" strokeWidth={2} />
+                    <Text className="text-[12.5px] font-medium text-charcoal">
+                      {note ? 'Note added' : 'Note'}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {showNoteInput ? (
+                  <TextInput
+                    value={note}
+                    onChangeText={setNote}
+                    onFocus={() => setIsInputFocused(true)}
+                    onBlur={() => setIsInputFocused(false)}
+                    returnKeyType="done"
+                    placeholder="Add a short note..."
+                    placeholderTextColor="#8A8880"
+                    className="mt-2.5 bg-white border border-warm-border rounded-2xl px-3.5 py-2.5 text-[13.5px] text-charcoal"
+                  />
+                ) : null}
+              </>
+            )}
+
+            {formError ? (
+              <Text className="mt-2.5 text-center text-[13px] font-semibold text-[#B85318]">
+                {formError}
+              </Text>
+            ) : null}
+          </ScrollView>
+
+          {/* Numeric Keypad & Save CTA */}
+          <View>
+            {!hideCustomKeypad ? (
+              <View className="gap-2">
+                {KEYPAD_ROWS.map((row, rIdx) => (
+                  <View key={rIdx} className="flex-row gap-2">
+                    {row.map((key) => (
+                      <Pressable
+                        key={key}
+                        onPress={() => handleKeyPress(key)}
+                        className="flex-1 h-12 rounded-2xl bg-white items-center justify-center active:bg-[#EAE8E1]"
+                      >
+                        {key === 'back' ? (
+                          <Delete size={20} color="#141413" strokeWidth={1.9} />
+                        ) : (
+                          <Text className="text-[20px] font-semibold text-charcoal">
+                            {key}
+                          </Text>
+                        )}
+                      </Pressable>
+                    ))}
+                  </View>
                 ))}
               </View>
-            ))}
-          </View>
+            ) : null}
 
-          <Pressable
-            onPress={handleSave}
-            className="mt-3 bg-charcoal rounded-full h-[54px] items-center justify-center active:opacity-85"
-          >
-            <Text className="text-white text-[16px] font-semibold">
-              Save {txType}
-            </Text>
-          </Pressable>
+            <Pressable
+              onPress={handleSave}
+              className="mt-3 bg-charcoal rounded-full h-[54px] items-center justify-center active:opacity-85"
+            >
+              <Text className="text-white text-[16px] font-semibold">
+                Save {txType}
+              </Text>
+            </Pressable>
+          </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

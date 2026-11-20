@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Pressable,
   ScrollView,
@@ -282,8 +283,15 @@ export default function RecurringBillsScreen() {
         animationType="fade"
         onRequestClose={() => setShowAddModal(false)}
       >
-        <View className="flex-1 bg-black/40 justify-end">
-          <View className="bg-cream rounded-t-3xl p-6 pb-8">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+          <View className="flex-1 bg-black/40 justify-end">
+            <ScrollView
+              style={{ flexGrow: 0, flexShrink: 1 }}
+              className="bg-cream rounded-t-3xl"
+              contentContainerStyle={{ padding: 24, paddingBottom: 32 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
             <View className="flex-row items-center justify-between mb-4">
               <Text className="text-[18px] font-bold text-charcoal">
                 {editing ? 'Edit bill' : 'New recurring bill'}
@@ -372,8 +380,9 @@ export default function RecurringBillsScreen() {
                 <Text className="text-[15px] font-semibold text-[#B85318]">Delete bill</Text>
               </Pressable>
             ) : null}
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

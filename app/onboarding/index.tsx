@@ -48,8 +48,8 @@ export default function OnboardingWelcomeScreen() {
           </View>
 
           {/* Hero Mascot */}
-          <View className="mt-10 mb-7 pl-1">
-            <NoxMascot size={124} />
+          <View className="mt-4 mb-3 items-center">
+            <NoxMascot size={200} />
           </View>
 
           {/* Headline & Subtitle */}
