@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 import { Href, router } from 'expo-router';
 import {
+  ArrowLeftRight,
   Calendar,
   Check,
   Delete,
@@ -16,17 +17,25 @@ import {
 import { NoxMiniIcon } from '@/components/NoxMascot';
 import { TransactionType, useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
-import { addDays, toISODate } from '@/lib/dates';
+import { addDays, formatShortDate, toISODate } from '@/lib/dates';
+import {
+  formatMoney,
+  isValidPositiveAmount,
+  MAX_MONEY_AMOUNT,
+  roundMoney,
+  splitMoneyParts,
+  subMoney,
+} from '@/lib/format';
 
-const CATEGORIES = [
+const FALLBACK_EXPENSE_CATEGORIES = [
   'Food',
   'Transport',
   'Bills',
   'Shopping',
   'Health',
   'Fun',
-  'More',
 ];
+const FALLBACK_INCOME_CATEGORIES = ['Salary', 'Other income'];
 
 const KEYPAD_ROWS = [
   ['1', '2', '3'],
@@ -35,50 +44,147 @@ const KEYPAD_ROWS = [
   ['.', '0', 'back'],
 ];
 
+const MAX_INTEGER_DIGITS = 9; // Up to 999,999,999.99
+
 export default function AddTransactionModal() {
   const { selectedCurrency } = useOnboarding();
   const {
     today,
     addTransaction,
     deleteTransaction,
+    transferBetweenWallets,
+    deleteTransfer,
+    transfers,
     categories,
+    expenseCategories,
+    incomeCategories,
     wallets,
+    defaultWallet,
     daysLeft,
   } = useBudget();
   const sym = selectedCurrency.symbol;
 
+  const expenseNames =
+    expenseCategories.length > 0
+      ? expenseCategories.map((c) => c.name)
+      : FALLBACK_EXPENSE_CATEGORIES;
+  const incomeNames =
+    incomeCategories.length > 0
+      ? incomeCategories.map((c) => c.name)
+      : FALLBACK_INCOME_CATEGORIES;
+
   const [txType, setTxType] = useState<TransactionType>('expense');
-  const [amountStr, setAmountStr] = useState('180');
-  const [quickText, setQuickText] = useState('lunch 180 yesterday');
-  const [selectedCategory, setSelectedCategory] = useState('Food');
-  const [dateLabel, setDateLabel] = useState<'Today' | 'Yesterday'>('Yesterday');
-  const [walletIndex, setWalletIndex] = useState(0);
+  const [amountStr, setAmountStr] = useState('0');
+  const [quickText, setQuickText] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState(expenseNames[0] ?? 'Food');
+  const [dateLabel, setDateLabel] = useState<'Today' | 'Yesterday'>('Today');
+  const [walletId, setWalletId] = useState<string>(
+    defaultWallet?.id ?? wallets[0]?.id ?? ''
+  );
+  const [toWalletId, setToWalletId] = useState<string>(
+    wallets.find((w) => w.id !== (defaultWallet?.id ?? wallets[0]?.id))?.id ?? ''
+  );
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [note, setNote] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [savedKind, setSavedKind] = useState<TransactionType>('expense');
+  const [savedAmount, setSavedAmount] = useState(0);
+  const [savedSummary, setSavedSummary] = useState('');
 
-  const selectedWallet = wallets[walletIndex]?.name ?? 'Cash wallet';
+  // Keep selected wallet IDs valid if wallets hydrate or change.
+  useEffect(() => {
+    if (wallets.length === 0) return;
+    const validFrom = wallets.some((w) => w.id === walletId);
+    const nextFrom = validFrom ? walletId : (defaultWallet?.id ?? wallets[0].id);
+    if (nextFrom !== walletId) setWalletId(nextFrom);
 
-  const numericAmount = parseFloat(amountStr) || 0;
-  const [wholePart, decPart] = numericAmount.toFixed(2).split('.');
+    const validTo = wallets.some((w) => w.id === toWalletId && w.id !== nextFrom);
+    if (!validTo) {
+      const other = wallets.find((w) => w.id !== nextFrom);
+      setToWalletId(other?.id ?? '');
+    }
+  }, [wallets, defaultWallet, walletId, toWalletId]);
+
+  const activeCategoryNames = txType === 'income' ? incomeNames : expenseNames;
+
+  // Keep selectedCategory compatible with the active txType.
+  useEffect(() => {
+    if (txType === 'transfer') return;
+    const exists = activeCategoryNames.some(
+      (name) => name.toLowerCase() === selectedCategory.toLowerCase()
+    );
+    if (!exists && activeCategoryNames[0]) {
+      setSelectedCategory(activeCategoryNames[0]);
+    }
+  }, [txType, activeCategoryNames, selectedCategory]);
+
+  const selectedWallet =
+    wallets.find((w) => w.id === walletId) ?? defaultWallet ?? wallets[0];
+  const destinationWallet =
+    wallets.find((w) => w.id === toWalletId && w.id !== selectedWallet?.id) ??
+    wallets.find((w) => w.id !== selectedWallet?.id);
+
+  const numericAmount = roundMoney(parseFloat(amountStr) || 0);
+  const { whole: wholePart, dec: decPart } = splitMoneyParts(numericAmount);
+  const txDate = dateLabel === 'Today' ? today : addDays(today, -1);
+
+  const cycleFromWallet = () => {
+    if (wallets.length <= 1) return;
+    const idx = wallets.findIndex((w) => w.id === selectedWallet?.id);
+    const next = wallets[(idx + 1) % wallets.length];
+    if (next) {
+      setWalletId(next.id);
+      if (next.id === toWalletId) {
+        const alt = wallets.find((w) => w.id !== next.id);
+        setToWalletId(alt?.id ?? '');
+      }
+      setFormError(null);
+    }
+  };
+
+  const cycleToWallet = () => {
+    const candidates = wallets.filter((w) => w.id !== selectedWallet?.id);
+    if (candidates.length === 0) return;
+    const idx = candidates.findIndex((w) => w.id === destinationWallet?.id);
+    const next = candidates[(idx + 1) % candidates.length];
+    if (next) {
+      setToWalletId(next.id);
+      setFormError(null);
+    }
+  };
 
   const handleQuickTextChange = (text: string) => {
     setQuickText(text);
-    const match = text.match(/(\d+(?:\.\d+)?)/);
-    if (match) {
-      setAmountStr(match[1]);
+    setFormError(null);
+    // Prefer the last number in the phrase (e.g. "2 coffees 150" -> "150").
+    const matches = text.match(/\d+(?:\.\d{1,2})?/g);
+    if (matches && matches.length > 0) {
+      const candidate = matches[matches.length - 1];
+      const parsed = Number(candidate);
+      if (Number.isFinite(parsed) && parsed <= MAX_MONEY_AMOUNT) {
+        setAmountStr(candidate);
+      }
     }
     const lower = text.toLowerCase();
-    if (lower.includes('lunch') || lower.includes('food') || lower.includes('dinner')) {
-      setSelectedCategory('Food');
-    } else if (lower.includes('grab') || lower.includes('jeep') || lower.includes('bus')) {
-      setSelectedCategory('Transport');
-    } else if (lower.includes('bill') || lower.includes('electric')) {
-      setSelectedCategory('Bills');
+    if (lower.includes('yesterday')) {
+      setDateLabel('Yesterday');
+    } else if (lower.includes('today')) {
+      setDateLabel('Today');
+    }
+    if (txType === 'expense') {
+      if (lower.includes('lunch') || lower.includes('food') || lower.includes('dinner')) {
+        setSelectedCategory('Food');
+      } else if (lower.includes('grab') || lower.includes('jeep') || lower.includes('bus')) {
+        setSelectedCategory('Transport');
+      } else if (lower.includes('bill') || lower.includes('electric')) {
+        setSelectedCategory('Bills');
+      }
     }
   };
 
   const handleKeyPress = (key: string) => {
+    setFormError(null);
     if (key === 'back') {
       setAmountStr((prev) => (prev.length <= 1 ? '0' : prev.slice(0, -1)));
       return;
@@ -87,26 +193,74 @@ export default function AddTransactionModal() {
       setAmountStr((prev) => (prev.includes('.') ? prev : `${prev}.`));
       return;
     }
-    setAmountStr((prev) => (prev === '0' ? key : `${prev}${key}`));
+    setAmountStr((prev) => {
+      if (prev.includes('.')) {
+        const [, dec] = prev.split('.');
+        if (dec.length >= 2) return prev;
+        return `${prev}${key}`;
+      }
+      if (prev === '0') return key;
+      if (prev.length >= MAX_INTEGER_DIGITS) return prev;
+      return `${prev}${key}`;
+    });
   };
 
   const handleSave = () => {
-    if (numericAmount <= 0) return;
-    const txDate = dateLabel === 'Today' ? today : addDays(today, -1);
+    if (!isValidPositiveAmount(numericAmount)) {
+      setFormError('Enter an amount greater than 0.');
+      return;
+    }
+    if (!selectedWallet) {
+      setFormError('Create a wallet before recording entries.');
+      return;
+    }
+
+    if (txType === 'transfer') {
+      if (wallets.length < 2 || !destinationWallet) {
+        setFormError('Transfers need at least two different wallets.');
+        return;
+      }
+      const err = transferBetweenWallets(
+        selectedWallet.id,
+        destinationWallet.id,
+        numericAmount
+      );
+      if (err) {
+        setFormError(err);
+        return;
+      }
+      setSavedKind('transfer');
+      setSavedAmount(numericAmount);
+      setSavedSummary(`${selectedWallet.name} → ${destinationWallet.name} · Today`);
+      setSavedId('transfer');
+      return;
+    }
+
     const id = addTransaction({
       title: quickText.trim() || selectedCategory,
-      category: txType === 'income' ? 'Income' : selectedCategory,
+      category: selectedCategory,
       amount: numericAmount,
       type: txType,
       date: toISODate(txDate),
-      wallet: selectedWallet,
+      wallet: selectedWallet.name,
+      walletId: selectedWallet.id,
       note: note.trim() || undefined,
     });
+    if (!id) {
+      setFormError('Could not save transaction. Check amount and wallet.');
+      return;
+    }
+    setSavedKind(txType);
+    setSavedAmount(numericAmount);
+    setSavedSummary(`${selectedCategory} · ${dateLabel} · ${selectedWallet.name}`);
     setSavedId(id);
   };
 
   const handleUndo = () => {
-    if (savedId) {
+    if (savedKind === 'transfer') {
+      const latest = transfers[0];
+      if (latest) deleteTransfer(latest.id);
+    } else if (savedId) {
       deleteTransaction(savedId);
     }
     setSavedId(null);
@@ -116,18 +270,25 @@ export default function AddTransactionModal() {
     setSavedId(null);
     setAmountStr('0');
     setQuickText('');
+    setNote('');
+    setFormError(null);
   };
 
   if (savedId) {
-    const budgetCat = categories.find(
-      (c) => c.name.toLowerCase() === selectedCategory.toLowerCase()
-    );
+    const budgetCat =
+      savedKind === 'expense'
+        ? categories.find(
+            (c) =>
+              c.type === 'expense' &&
+              c.name.toLowerCase() === selectedCategory.toLowerCase()
+          )
+        : undefined;
     const pct =
       budgetCat && budgetCat.limit > 0
         ? Math.min(100, Math.round((budgetCat.spent / budgetCat.limit) * 100))
         : 0;
     const remaining = budgetCat
-      ? Math.max(0, Math.round(budgetCat.limit - budgetCat.spent))
+      ? Math.max(0, subMoney(budgetCat.limit, budgetCat.spent))
       : 0;
 
     return (
@@ -158,14 +319,10 @@ export default function AddTransactionModal() {
               Saved
             </Animated.Text>
             <Text className="mt-1.5 text-[36px] font-bold tracking-tight text-charcoal">
-              {sym}
-              {numericAmount.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+              {formatMoney(savedAmount, sym)}
             </Text>
             <Text className="mt-1.5 text-[14px] text-warm-gray">
-              {selectedCategory} · {dateLabel} · {selectedWallet}
+              {savedSummary}
             </Text>
 
             {budgetCat ? (
@@ -176,13 +333,11 @@ export default function AddTransactionModal() {
                   </Text>
                   <Text className="text-[14px]">
                     <Text className="font-bold text-charcoal">
-                      {sym}
-                      {budgetCat.spent.toLocaleString('en-US')}
+                      {formatMoney(budgetCat.spent, sym)}
                     </Text>
                     <Text className="text-warm-gray">
                       {' '}
-                      / {sym}
-                      {budgetCat.limit.toLocaleString('en-US')}
+                      / {formatMoney(budgetCat.limit, sym)}
                     </Text>
                   </Text>
                 </View>
@@ -197,8 +352,7 @@ export default function AddTransactionModal() {
                 </View>
 
                 <Text className="mt-2 text-[12.5px] font-medium text-[#B85318]">
-                  {pct}% used · {sym}
-                  {remaining.toLocaleString('en-US')} left for {daysLeft} days
+                  {pct}% used · {formatMoney(remaining, sym)} left for {daysLeft} days
                 </Text>
               </View>
             ) : null}
@@ -261,7 +415,10 @@ export default function AddTransactionModal() {
                   return (
                     <Pressable
                       key={t}
-                      onPress={() => setTxType(t)}
+                      onPress={() => {
+                        setTxType(t);
+                        setFormError(null);
+                      }}
                       className={`px-3.5 py-1.5 rounded-full ${
                         active ? 'bg-white' : 'bg-transparent'
                       }`}
@@ -296,7 +453,7 @@ export default function AddTransactionModal() {
             <View className="flex-row items-baseline mt-1">
               <Text className="text-[42px] leading-[48px] font-bold tracking-tight text-charcoal">
                 {sym}
-                {Number(wholePart).toLocaleString('en-US')}
+                {wholePart}
               </Text>
               <Text className="text-[36px] leading-[44px] font-bold text-[#8A8880]">
                 .{decPart}
@@ -304,116 +461,166 @@ export default function AddTransactionModal() {
             </View>
           </View>
 
-          {/* Nox Quick-Type Card */}
-          <View className="mt-4 bg-white border border-warm-border rounded-3xl p-3.5">
-            <View className="flex-row items-center gap-2">
-              <NoxMiniIcon size={20} />
-              <Text className="text-[12.5px] font-medium text-warm-gray">
-                Or just type it — Nox fills the rest
-              </Text>
+          {txType === 'transfer' ? (
+            /* Transfer Wallet Selectors */
+            <View className="mt-4 bg-white border border-warm-border rounded-3xl p-4 gap-3">
+              <Pressable
+                onPress={cycleFromWallet}
+                className="flex-row items-center justify-between bg-[#F3F2EC] rounded-2xl px-3.5 py-3 active:opacity-80"
+              >
+                <View>
+                  <Text className="text-[11.5px] text-warm-gray">From wallet</Text>
+                  <Text className="text-[15px] font-semibold text-charcoal mt-0.5">
+                    {selectedWallet?.name ?? 'No wallet'}
+                  </Text>
+                </View>
+                <Text className="text-[13.5px] font-medium text-warm-gray">
+                  {formatMoney(selectedWallet?.balance ?? 0, sym)}
+                </Text>
+              </Pressable>
+
+              <View className="items-center -my-1">
+                <ArrowLeftRight size={16} color="#66655E" strokeWidth={2} />
+              </View>
+
+              <Pressable
+                onPress={cycleToWallet}
+                className="flex-row items-center justify-between bg-[#F3F2EC] rounded-2xl px-3.5 py-3 active:opacity-80"
+              >
+                <View>
+                  <Text className="text-[11.5px] text-warm-gray">To wallet</Text>
+                  <Text className="text-[15px] font-semibold text-charcoal mt-0.5">
+                    {destinationWallet?.name ?? 'Add a second wallet'}
+                  </Text>
+                </View>
+                {destinationWallet ? (
+                  <Text className="text-[13.5px] font-medium text-warm-gray">
+                    {formatMoney(destinationWallet.balance, sym)}
+                  </Text>
+                ) : null}
+              </Pressable>
             </View>
+          ) : (
+            <>
+              {/* Nox Quick-Type Card */}
+              <View className="mt-4 bg-white border border-warm-border rounded-3xl p-3.5">
+                <View className="flex-row items-center gap-2">
+                  <NoxMiniIcon size={20} />
+                  <Text className="text-[12.5px] font-medium text-warm-gray">
+                    Or just type it — Nox fills the rest
+                  </Text>
+                </View>
 
-            <TextInput
-              value={quickText}
-              onChangeText={handleQuickTextChange}
-              placeholder="e.g. lunch 180 yesterday"
-              placeholderTextColor="#8A8880"
-              className="mt-2.5 bg-[#F3F2EC] rounded-2xl px-3.5 py-2.5 text-[14.5px] text-charcoal"
-            />
+                <TextInput
+                  value={quickText}
+                  onChangeText={handleQuickTextChange}
+                  placeholder={
+                    txType === 'income'
+                      ? 'e.g. salary 25000 today'
+                      : 'e.g. lunch 180 yesterday'
+                  }
+                  placeholderTextColor="#8A8880"
+                  className="mt-2.5 bg-[#F3F2EC] rounded-2xl px-3.5 py-2.5 text-[14.5px] text-charcoal"
+                />
 
-            <View className="flex-row items-center gap-2 mt-2.5">
-              <View className="bg-nox-lime rounded-full px-3 py-1">
-                <Text className="text-[12.5px] font-semibold text-charcoal">
-                  {selectedCategory}
-                </Text>
+                <View className="flex-row items-center gap-2 mt-2.5">
+                  <View className="bg-nox-lime rounded-full px-3 py-1">
+                    <Text className="text-[12.5px] font-semibold text-charcoal">
+                      {selectedCategory}
+                    </Text>
+                  </View>
+                  <View className="bg-[#F3F2EC] rounded-full px-3 py-1">
+                    <Text className="text-[12.5px] font-medium text-charcoal">
+                      {formatMoney(numericAmount, sym)}
+                    </Text>
+                  </View>
+                  <View className="bg-[#F3F2EC] rounded-full px-3 py-1">
+                    <Text className="text-[12.5px] font-medium text-charcoal">
+                      {formatShortDate(txDate, today)}
+                    </Text>
+                  </View>
+                </View>
               </View>
-              <View className="bg-[#F3F2EC] rounded-full px-3 py-1">
-                <Text className="text-[12.5px] font-medium text-charcoal">
-                  {sym}
-                  {numericAmount.toFixed(2)}
-                </Text>
-              </View>
-              <View className="bg-[#F3F2EC] rounded-full px-3 py-1">
-                <Text className="text-[12.5px] font-medium text-charcoal">
-                  Thu, Nov 19
-                </Text>
-              </View>
-            </View>
-          </View>
 
-          {/* Category Pills */}
-          <View className="flex-row flex-wrap gap-2 mt-4">
-            {CATEGORIES.map((cat) => {
-              const active = selectedCategory === cat;
-              return (
+              {/* Category Pills */}
+              <View className="flex-row flex-wrap gap-2 mt-4">
+                {activeCategoryNames.map((cat) => {
+                  const active = selectedCategory === cat;
+                  return (
+                    <Pressable
+                      key={cat}
+                      onPress={() => setSelectedCategory(cat)}
+                      className={`rounded-full px-4 py-2 border ${
+                        active
+                          ? 'bg-charcoal border-charcoal'
+                          : 'bg-white border-warm-border'
+                      }`}
+                    >
+                      <Text
+                        className={`text-[13.5px] font-semibold ${
+                          active ? 'text-white' : 'text-charcoal'
+                        }`}
+                      >
+                        {cat}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              {/* Metadata Row */}
+              <View className="flex-row items-center gap-2 mt-3.5">
                 <Pressable
-                  key={cat}
-                  onPress={() => setSelectedCategory(cat)}
-                  className={`rounded-full px-4 py-2 border ${
-                    active
-                      ? 'bg-charcoal border-charcoal'
-                      : 'bg-white border-warm-border'
-                  }`}
+                  onPress={() =>
+                    setDateLabel((prev) =>
+                      prev === 'Yesterday' ? 'Today' : 'Yesterday'
+                    )
+                  }
+                  className="flex-row items-center gap-1.5 bg-[#EFECE4] rounded-xl px-3 py-2 active:opacity-75"
                 >
-                  <Text
-                    className={`text-[13.5px] font-semibold ${
-                      active ? 'text-white' : 'text-charcoal'
-                    }`}
-                  >
-                    {cat}
+                  <Calendar size={14} color="#66655E" strokeWidth={2} />
+                  <Text className="text-[12.5px] font-medium text-charcoal">
+                    {dateLabel}
                   </Text>
                 </Pressable>
-              );
-            })}
-          </View>
+                <Pressable
+                  onPress={cycleFromWallet}
+                  className="flex-row items-center gap-1.5 bg-[#EFECE4] rounded-xl px-3 py-2 active:opacity-75"
+                >
+                  <Wallet size={14} color="#66655E" strokeWidth={2} />
+                  <Text className="text-[12.5px] font-medium text-charcoal">
+                    {selectedWallet?.name ?? 'Wallet'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setShowNoteInput((prev) => !prev)}
+                  className={`flex-row items-center gap-1.5 rounded-xl px-3 py-2 active:opacity-75 ${
+                    showNoteInput || note ? 'bg-nox-lime' : 'bg-[#EFECE4]'
+                  }`}
+                >
+                  <Pencil size={14} color="#141413" strokeWidth={2} />
+                  <Text className="text-[12.5px] font-medium text-charcoal">
+                    {note ? 'Note added' : 'Note'}
+                  </Text>
+                </Pressable>
+              </View>
 
-          {/* Metadata Row */}
-          <View className="flex-row items-center gap-2 mt-3.5">
-            <Pressable
-              onPress={() =>
-                setDateLabel((prev) =>
-                  prev === 'Yesterday' ? 'Today' : 'Yesterday'
-                )
-              }
-              className="flex-row items-center gap-1.5 bg-[#EFECE4] rounded-xl px-3 py-2 active:opacity-75"
-            >
-              <Calendar size={14} color="#66655E" strokeWidth={2} />
-              <Text className="text-[12.5px] font-medium text-charcoal">
-                {dateLabel}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() =>
-                setWalletIndex((prev) => (prev + 1) % Math.max(1, wallets.length))
-              }
-              className="flex-row items-center gap-1.5 bg-[#EFECE4] rounded-xl px-3 py-2 active:opacity-75"
-            >
-              <Wallet size={14} color="#66655E" strokeWidth={2} />
-              <Text className="text-[12.5px] font-medium text-charcoal">
-                {selectedWallet}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setShowNoteInput((prev) => !prev)}
-              className={`flex-row items-center gap-1.5 rounded-xl px-3 py-2 active:opacity-75 ${
-                showNoteInput || note ? 'bg-nox-lime' : 'bg-[#EFECE4]'
-              }`}
-            >
-              <Pencil size={14} color="#141413" strokeWidth={2} />
-              <Text className="text-[12.5px] font-medium text-charcoal">
-                {note ? 'Note added' : 'Note'}
-              </Text>
-            </Pressable>
-          </View>
+              {showNoteInput ? (
+                <TextInput
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="Add a short note..."
+                  placeholderTextColor="#8A8880"
+                  className="mt-2.5 bg-white border border-warm-border rounded-2xl px-3.5 py-2 text-[13.5px] text-charcoal"
+                />
+              ) : null}
+            </>
+          )}
 
-          {showNoteInput ? (
-            <TextInput
-              value={note}
-              onChangeText={setNote}
-              placeholder="Add a short note..."
-              placeholderTextColor="#8A8880"
-              className="mt-2.5 bg-white border border-warm-border rounded-2xl px-3.5 py-2 text-[13.5px] text-charcoal"
-            />
+          {formError ? (
+            <Text className="mt-2.5 text-center text-[13px] font-semibold text-[#B85318]">
+              {formError}
+            </Text>
           ) : null}
         </View>
 

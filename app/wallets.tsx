@@ -27,7 +27,13 @@ import {
 import { TransferRecord, useBudget, WalletItem } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
 import { formatShortDate, parseISODate } from '@/lib/dates';
-import { formatMoney, parseAmount } from '@/lib/format';
+import {
+  formatMoney,
+  isValidPositiveAmount,
+  parseAmount,
+  splitMoneyParts,
+  sumMoney,
+} from '@/lib/format';
 
 function getWalletIcon(type: WalletItem['iconType']) {
   switch (type) {
@@ -46,6 +52,7 @@ export default function WalletsScreen() {
     today,
     wallets,
     transfers,
+    storageError,
     addWallet,
     updateWallet,
     setDefaultWallet,
@@ -54,6 +61,8 @@ export default function WalletsScreen() {
     deleteTransfer,
   } = useBudget();
   const sym = selectedCurrency.symbol;
+
+  const [showAllTransfers, setShowAllTransfers] = useState(false);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingWallet, setEditingWallet] = useState<WalletItem | null>(null);
@@ -84,8 +93,8 @@ export default function WalletsScreen() {
     setToId(prevFrom);
   };
 
-  const totalBalance = wallets.reduce((sum, w) => sum + w.balance, 0);
-  const [whole, dec] = totalBalance.toFixed(2).split('.');
+  const totalBalance = sumMoney(wallets.map((w) => w.balance));
+  const { sign: totalSign, whole, dec } = splitMoneyParts(totalBalance);
 
   const openAddWallet = () => {
     setEditingWallet(null);
@@ -124,7 +133,7 @@ export default function WalletsScreen() {
       addWallet({
         name: trimmed,
         subtitle: newSubtitle.trim() || 'Local wallet',
-        initialBalance: parseAmount(newBalance),
+        initialBalance: parseAmount(newBalance, { allowNegative: true }),
         iconType: newType,
       });
     }
@@ -150,12 +159,20 @@ export default function WalletsScreen() {
 
   const handleTransfer = () => {
     const amt = parseAmount(transferAmount);
-    if (!fromId || !toId || fromId === toId) {
+    const activeFromId = fromWallet?.id ?? '';
+    const activeToId = toWallet?.id ?? '';
+    if (!activeFromId || !activeToId || activeFromId === activeToId) {
       return setTransferError('Pick two different wallets');
     }
-    if (amt <= 0) return setTransferError('Enter an amount');
-    transferBetweenWallets(fromId, toId, amt);
+    if (!isValidPositiveAmount(amt)) {
+      return setTransferError('Enter a valid amount greater than 0');
+    }
+    const err = transferBetweenWallets(activeFromId, activeToId, amt);
+    if (err) {
+      return setTransferError(err);
+    }
     setTransferAmount('');
+    setTransferError(null);
     setShowTransferModal(false);
   };
 
@@ -188,14 +205,23 @@ export default function WalletsScreen() {
             </Text>
           </View>
 
+          {storageError ? (
+            <View className="mb-4 bg-[#FCEEE4] border border-[#E5B89B] rounded-2xl px-4 py-3">
+              <Text className="text-[13px] font-semibold text-[#B85318]">
+                {storageError}
+              </Text>
+            </View>
+          ) : null}
+
           {/* Total Balance */}
           <Text className="text-[13.5px] text-warm-gray">
             Total across {wallets.length} wallets
           </Text>
           <View className="flex-row items-baseline mt-1">
             <Text className="text-[36px] leading-[42px] font-bold tracking-tight text-charcoal">
+              {totalSign}
               {sym}
-              {Number(whole).toLocaleString('en-US')}
+              {whole}
             </Text>
             <Text className="text-[32px] leading-[38px] font-bold text-[#8A8880]">
               .{dec}
@@ -291,7 +317,7 @@ export default function WalletsScreen() {
             </Text>
           ) : null}
           <View className="gap-3">
-            {transfers.slice(0, 20).map((tr) => (
+            {(showAllTransfers ? transfers : transfers.slice(0, 20)).map((tr) => (
               <Pressable
                 key={tr.id}
                 onPress={() => confirmDeleteTransfer(tr)}
@@ -307,15 +333,23 @@ export default function WalletsScreen() {
                   </Text>
                 </View>
                 <Text className="text-[14.5px] font-semibold text-charcoal">
-                  {sym}
-                  {tr.amount.toLocaleString('en-US', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
+                  {formatMoney(tr.amount, sym)}
                 </Text>
               </Pressable>
             ))}
           </View>
+          {transfers.length > 20 ? (
+            <Pressable
+              onPress={() => setShowAllTransfers((prev) => !prev)}
+              className="mt-3 py-2 items-center active:opacity-70"
+            >
+              <Text className="text-[13.5px] font-semibold text-charcoal">
+                {showAllTransfers
+                  ? 'Show fewer transfers'
+                  : `View all ${transfers.length} transfers`}
+              </Text>
+            </Pressable>
+          ) : null}
         </ScrollView>
 
         {/* Bottom Info */}
@@ -555,10 +589,17 @@ export default function WalletsScreen() {
                 );
               })}
               <Pressable
-                onPress={() =>
-                  setTransferAmount(String(fromWallet?.balance ?? 0))
-                }
-                className="rounded-full px-4 py-2 bg-white border border-warm-border"
+                disabled={(fromWallet?.balance ?? 0) <= 0}
+                onPress={() => {
+                  const bal = fromWallet?.balance ?? 0;
+                  if (bal > 0) {
+                    setTransferAmount(bal.toFixed(2));
+                    setTransferError(null);
+                  }
+                }}
+                className={`rounded-full px-4 py-2 bg-white border border-warm-border ${
+                  (fromWallet?.balance ?? 0) <= 0 ? 'opacity-40' : ''
+                }`}
               >
                 <Text className="text-[13px] font-semibold text-charcoal">
                   All
@@ -580,8 +621,7 @@ export default function WalletsScreen() {
               className="bg-charcoal rounded-full h-[52px] items-center justify-center active:opacity-85"
             >
               <Text className="text-white text-[15.5px] font-semibold">
-                Transfer {sym}
-                {(parseFloat(transferAmount) || 0).toLocaleString('en-US')}
+                Transfer {formatMoney(parseAmount(transferAmount), sym)}
               </Text>
             </Pressable>
           </View>

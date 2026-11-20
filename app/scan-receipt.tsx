@@ -35,7 +35,7 @@ const SCANNED_SAMPLES = [
 
 export default function ScanReceiptScreen() {
   const { selectedCurrency } = useOnboarding();
-  const { today, addTransaction } = useBudget();
+  const { today, defaultWallet, wallets, addTransaction } = useBudget();
   const sym = selectedCurrency.symbol;
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -45,13 +45,15 @@ export default function ScanReceiptScreen() {
   const currentScan = SCANNED_SAMPLES[sampleIdx];
 
   const handleSaveReceipt = () => {
+    const targetWallet = defaultWallet ?? wallets[0];
     addTransaction({
       title: currentScan.merchant,
       category: currentScan.category,
       amount: currentScan.amount,
       type: 'expense',
       date: toISODate(today),
-      wallet: 'Cash wallet',
+      wallet: targetWallet?.name ?? 'Cash wallet',
+      walletId: targetWallet?.id,
       note: `${currentScan.items} from receipt scan`,
     });
     router.back();

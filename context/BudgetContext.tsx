@@ -20,7 +20,22 @@ import {
   startOfDay,
   toISODate,
 } from '@/lib/dates';
-import { loadJSON, removeKeys, saveJSON, STORAGE_KEYS } from '@/lib/storage';
+import {
+  addMoney,
+  fromCents,
+  isValidFiniteAmount,
+  isValidPositiveAmount,
+  roundMoney,
+  subMoney,
+  sumMoney,
+  toCents,
+} from '@/lib/format';
+import {
+  loadJSONSafe,
+  removeKeys,
+  saveJSONStrict,
+  STORAGE_KEYS,
+} from '@/lib/storage';
 
 export type TransactionType = 'expense' | 'income' | 'transfer';
 export type CategoryType = 'expense' | 'income';
@@ -35,7 +50,10 @@ export interface Transaction {
   date: string;
   /** ISO timestamp used to order entries recorded on the same day. */
   createdAt: string;
+  /** Display name of the wallet (kept synced with walletId). */
   wallet: string;
+  /** Immutable foreign key referencing WalletRecord.id. */
+  walletId?: string;
   repeat?: string;
   note?: string;
   noxSource?: string;
@@ -74,9 +92,13 @@ export interface TransferRecord {
   id: string;
   from: string;
   to: string;
+  fromId?: string;
+  toId?: string;
   amount: number;
   /** Local calendar date, YYYY-MM-DD. */
   date: string;
+  /** ISO timestamp for deterministic ordering of same-day transfers. */
+  createdAt?: string;
 }
 
 export interface SavingsGoal {
@@ -91,6 +113,7 @@ export interface RecurringBill {
   id: string;
   title: string;
   wallet: string;
+  walletId?: string;
   amount: number;
   /** Day of month the bill is due (clamped to the month's last day). */
   dueDay: number;
@@ -151,6 +174,9 @@ interface PersistedBudget extends BudgetSnapshot {
 interface BudgetContextValue {
   /** False until saved data has been read from storage. */
   hydrated: boolean;
+  /** Non-null when AsyncStorage read or write failed. */
+  storageError: string | null;
+  clearStorageError: () => void;
   today: Date;
   period: BudgetPeriod;
   previousPeriod: BudgetPeriod;
@@ -200,7 +226,8 @@ interface BudgetContextValue {
   setDefaultWallet: (id: string) => void;
   /** Returns an error message when the wallet cannot be deleted. */
   deleteWallet: (id: string) => string | null;
-  transferBetweenWallets: (fromId: string, toId: string, amount: number) => void;
+  /** Returns an error message on invalid transfer, or null on success. */
+  transferBetweenWallets: (fromId: string, toId: string, amount: number) => string | null;
   deleteTransfer: (id: string) => void;
   addGoal: (goal: Omit<SavingsGoal, 'id'>) => void;
   updateGoal: (id: string, updates: Partial<Omit<SavingsGoal, 'id'>>) => void;
@@ -258,6 +285,153 @@ function sameName(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
+function resolveWallet(
+  wallets: readonly WalletRecord[],
+  walletId?: string,
+  walletName?: string
+): WalletRecord | undefined {
+  if (walletId) {
+    const byId = wallets.find((w) => w.id === walletId);
+    if (byId) return byId;
+  }
+  if (walletName) {
+    return wallets.find((w) => sameName(w.name, walletName));
+  }
+  return undefined;
+}
+
+function matchesWallet(
+  wallet: WalletRecord,
+  refId?: string,
+  refName?: string
+): boolean {
+  if (refId) return refId === wallet.id;
+  if (refName) return sameName(refName, wallet.name);
+  return false;
+}
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function sanitizeWallets(raw: unknown[]): WalletRecord[] {
+  const valid: WalletRecord[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const w = item as Partial<WalletRecord>;
+    if (typeof w.id !== 'string' || !w.id.trim()) continue;
+    if (typeof w.name !== 'string' || !w.name.trim()) continue;
+    const initialBalance =
+      typeof w.initialBalance === 'number' && isValidFiniteAmount(w.initialBalance)
+        ? roundMoney(w.initialBalance)
+        : 0;
+    const iconType =
+      w.iconType === 'cash' || w.iconType === 'ewallet' || w.iconType === 'bank'
+        ? w.iconType
+        : 'cash';
+    valid.push({
+      id: w.id,
+      name: w.name.trim(),
+      subtitle: typeof w.subtitle === 'string' ? w.subtitle : '',
+      initialBalance,
+      isDefault: !!w.isDefault,
+      iconType,
+    });
+  }
+  if (valid.length > 0 && !valid.some((w) => w.isDefault)) {
+    valid[0] = { ...valid[0], isDefault: true };
+  }
+  return valid;
+}
+
+function sanitizeTransactions(
+  raw: unknown[],
+  wallets: readonly WalletRecord[]
+): Transaction[] {
+  const valid: Transaction[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const t = item as Partial<Transaction>;
+    if (typeof t.id !== 'string' || !t.id.trim()) continue;
+    if (typeof t.title !== 'string') continue;
+    if (typeof t.category !== 'string') continue;
+    if (typeof t.amount !== 'number' || !isValidPositiveAmount(t.amount)) continue;
+    if (t.type !== 'expense' && t.type !== 'income' && t.type !== 'transfer') continue;
+    if (typeof t.date !== 'string' || !ISO_DATE_RE.test(t.date)) continue;
+    const matched = resolveWallet(wallets, t.walletId, t.wallet);
+    valid.push({
+      id: t.id,
+      title: t.title,
+      category: t.category,
+      amount: roundMoney(t.amount),
+      type: t.type,
+      date: t.date,
+      createdAt: typeof t.createdAt === 'string' ? t.createdAt : new Date().toISOString(),
+      wallet: matched?.name ?? (typeof t.wallet === 'string' ? t.wallet : wallets[0]?.name ?? ''),
+      walletId: matched?.id ?? t.walletId,
+      repeat: typeof t.repeat === 'string' ? t.repeat : undefined,
+      note: typeof t.note === 'string' ? t.note : undefined,
+      noxSource: typeof t.noxSource === 'string' ? t.noxSource : undefined,
+    });
+  }
+  return valid;
+}
+
+function sanitizeTransfers(
+  raw: unknown[],
+  wallets: readonly WalletRecord[]
+): TransferRecord[] {
+  const valid: TransferRecord[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const tr = item as Partial<TransferRecord>;
+    if (typeof tr.id !== 'string' || !tr.id.trim()) continue;
+    if (typeof tr.amount !== 'number' || !isValidPositiveAmount(tr.amount)) continue;
+    if (typeof tr.date !== 'string' || !ISO_DATE_RE.test(tr.date)) continue;
+    const fromW = resolveWallet(wallets, tr.fromId, tr.from);
+    const toW = resolveWallet(wallets, tr.toId, tr.to);
+    if (!fromW && typeof tr.from !== 'string') continue;
+    if (!toW && typeof tr.to !== 'string') continue;
+    valid.push({
+      id: tr.id,
+      from: fromW?.name ?? (tr.from as string),
+      to: toW?.name ?? (tr.to as string),
+      fromId: fromW?.id ?? tr.fromId,
+      toId: toW?.id ?? tr.toId,
+      amount: roundMoney(tr.amount),
+      date: tr.date,
+      createdAt: typeof tr.createdAt === 'string' ? tr.createdAt : undefined,
+    });
+  }
+  return valid;
+}
+
+function sanitizeBills(
+  raw: unknown[],
+  wallets: readonly WalletRecord[]
+): RecurringBill[] {
+  const valid: RecurringBill[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const b = item as Partial<RecurringBill>;
+    if (typeof b.id !== 'string' || !b.id.trim()) continue;
+    if (typeof b.title !== 'string') continue;
+    if (typeof b.amount !== 'number' || !isValidPositiveAmount(b.amount)) continue;
+    if (typeof b.dueDay !== 'number' || b.dueDay < 1 || b.dueDay > 31) continue;
+    const matched = resolveWallet(wallets, b.walletId, b.wallet);
+    valid.push({
+      id: b.id,
+      title: b.title,
+      wallet: matched?.name ?? (typeof b.wallet === 'string' ? b.wallet : wallets[0]?.name ?? ''),
+      walletId: matched?.id ?? b.walletId,
+      amount: roundMoney(b.amount),
+      dueDay: Math.round(b.dueDay),
+      paidMonths: Array.isArray(b.paidMonths)
+        ? b.paidMonths.filter((m): m is string => typeof m === 'string')
+        : [],
+    });
+  }
+  return valid;
+}
+
 const BudgetContext = createContext<BudgetContextValue | null>(null);
 
 export function BudgetProvider({ children }: { children: React.ReactNode }) {
@@ -276,23 +450,48 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   const [hideAmountsOnHome, setHideAmountsOnHome] = useState(false);
   const [noxSuggestionsEnabled, setNoxSuggestionsEnabled] = useState(true);
   const [hydrated, setHydrated] = useState(false);
+  const [storageError, setStorageError] = useState<string | null>(null);
 
   // Seed starter categories once, after the user picks "Simple" in onboarding.
   const seededRef = useRef(false);
+  // Prevents resetAll() from immediately re-persisting empty defaults after removeKeys().
+  const skipNextPersistRef = useRef(false);
+
+  const clearStorageError = useCallback(() => {
+    setStorageError(null);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    loadJSON<Partial<PersistedBudget>>(STORAGE_KEYS.budget).then((saved) => {
+    loadJSONSafe<Partial<PersistedBudget>>(STORAGE_KEYS.budget).then((result) => {
       if (cancelled) return;
-      if (saved) {
-        if (Array.isArray(saved.transactions)) setTransactions(saved.transactions);
-        if (Array.isArray(saved.categories)) setCategoryRecords(saved.categories);
-        if (Array.isArray(saved.wallets) && saved.wallets.length > 0) {
-          setWalletRecords(saved.wallets);
+      if (result.status === 'error') {
+        // Do NOT mark hydrated on read failure so auto-save never overwrites disk data.
+        setStorageError(
+          'Could not read saved budget data. Writes are paused to protect your records.'
+        );
+        return;
+      }
+      if (result.status === 'ok') {
+        const saved = result.data;
+        const nextWallets =
+          Array.isArray(saved.wallets) && saved.wallets.length > 0
+            ? sanitizeWallets(saved.wallets)
+            : [DEFAULT_WALLET];
+        const effectiveWallets = nextWallets.length > 0 ? nextWallets : [DEFAULT_WALLET];
+        setWalletRecords(effectiveWallets);
+
+        if (Array.isArray(saved.transactions)) {
+          setTransactions(sanitizeTransactions(saved.transactions, effectiveWallets));
         }
-        if (Array.isArray(saved.transfers)) setTransfers(saved.transfers);
+        if (Array.isArray(saved.categories)) setCategoryRecords(saved.categories);
+        if (Array.isArray(saved.transfers)) {
+          setTransfers(sanitizeTransfers(saved.transfers, effectiveWallets));
+        }
         if (Array.isArray(saved.goals)) setGoals(saved.goals);
-        if (Array.isArray(saved.bills)) setBills(saved.bills);
+        if (Array.isArray(saved.bills)) {
+          setBills(sanitizeBills(saved.bills, effectiveWallets));
+        }
         setLastBackup(saved.lastBackup ?? null);
         if (typeof saved.hideAmountsOnHome === 'boolean') {
           setHideAmountsOnHome(saved.hideAmountsOnHome);
@@ -311,6 +510,11 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!hydrated) return;
+    if (skipNextPersistRef.current) {
+      skipNextPersistRef.current = false;
+      return;
+    }
+    let cancelled = false;
     const data: PersistedBudget = {
       version: SNAPSHOT_VERSION,
       transactions,
@@ -324,7 +528,20 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       hideAmountsOnHome,
       noxSuggestionsEnabled,
     };
-    saveJSON(STORAGE_KEYS.budget, data);
+    saveJSONStrict(STORAGE_KEYS.budget, data)
+      .then(() => {
+        if (!cancelled) setStorageError(null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStorageError(
+            'Could not save your latest changes to device storage. Free up space and try again.'
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [
     hydrated,
     transactions,
@@ -395,19 +612,23 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
 
   const totalSpent = useMemo(
     () =>
-      periodTransactions
-        .filter((t) => t.type === 'expense')
-        .reduce((sum, t) => sum + t.amount, 0),
+      sumMoney(
+        periodTransactions
+          .filter((t) => t.type === 'expense')
+          .map((t) => t.amount)
+      ),
     [periodTransactions]
   );
   const totalIncome = useMemo(
     () =>
-      periodTransactions
-        .filter((t) => t.type === 'income')
-        .reduce((sum, t) => sum + t.amount, 0),
+      sumMoney(
+        periodTransactions
+          .filter((t) => t.type === 'income')
+          .map((t) => t.amount)
+      ),
     [periodTransactions]
   );
-  const leftToSpend = Math.max(0, totalBudget - totalSpent);
+  const leftToSpend = Math.max(0, subMoney(totalBudget, totalSpent));
   const safeToSpendToday =
     totalBudget > 0 ? Math.floor(leftToSpend / daysLeft) : 0;
 
@@ -419,7 +640,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         );
         return {
           ...c,
-          spent: matching.reduce((sum, t) => sum + t.amount, 0),
+          spent: sumMoney(matching.map((t) => t.amount)),
           count: matching.length,
         };
       }),
@@ -437,38 +658,90 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   const wallets = useMemo<WalletItem[]>(
     () =>
       walletRecords.map((w) => {
-        let balance = w.initialBalance;
+        let balanceCents = toCents(w.initialBalance);
         for (const t of transactions) {
-          if (t.wallet !== w.name) continue;
-          if (t.type === 'income') balance += t.amount;
-          else if (t.type === 'expense') balance -= t.amount;
+          if (!matchesWallet(w, t.walletId, t.wallet)) continue;
+          const amtCents = toCents(t.amount);
+          if (t.type === 'income') balanceCents += amtCents;
+          else if (t.type === 'expense') balanceCents -= amtCents;
         }
         for (const tr of transfers) {
-          if (tr.from === w.name) balance -= tr.amount;
-          if (tr.to === w.name) balance += tr.amount;
+          const amtCents = toCents(tr.amount);
+          if (matchesWallet(w, tr.fromId, tr.from)) balanceCents -= amtCents;
+          if (matchesWallet(w, tr.toId, tr.to)) balanceCents += amtCents;
         }
-        return { ...w, balance };
+        return { ...w, balance: fromCents(balanceCents) };
       }),
     [walletRecords, transactions, transfers]
   );
   const defaultWallet = wallets.find((w) => w.isDefault) ?? wallets[0];
 
-  const addTransaction = useCallback((tx: NewTransaction): string => {
-    const id = makeId('tx');
-    setTransactions((prev) => [
-      { ...tx, id, createdAt: new Date().toISOString() },
-      ...prev,
-    ]);
-    return id;
-  }, []);
+  const addTransaction = useCallback(
+    (tx: NewTransaction): string => {
+      if (tx.type === 'transfer') return '';
+      if (!isValidPositiveAmount(tx.amount)) return '';
+      const matchedWallet =
+        resolveWallet(walletRecords, tx.walletId, tx.wallet) ??
+        walletRecords.find((w) => w.isDefault) ??
+        walletRecords[0];
+      if (!matchedWallet) return '';
+      const id = makeId('tx');
+      setTransactions((prev) => [
+        {
+          ...tx,
+          amount: roundMoney(tx.amount),
+          wallet: matchedWallet.name,
+          walletId: matchedWallet.id,
+          id,
+          createdAt: new Date().toISOString(),
+        },
+        ...prev,
+      ]);
+      return id;
+    },
+    [walletRecords]
+  );
 
   const updateTransaction = useCallback(
     (id: string, updates: Partial<NewTransaction>) => {
+      if (updates.type === 'transfer') return;
+      if (updates.amount !== undefined && !isValidPositiveAmount(updates.amount)) {
+        return;
+      }
+
+      let resolvedWallet: WalletRecord | undefined;
+      if (updates.walletId !== undefined || updates.wallet !== undefined) {
+        resolvedWallet = resolveWallet(walletRecords, updates.walletId, updates.wallet);
+        if (!resolvedWallet) return;
+      }
+
       setTransactions((prev) =>
-        prev.map((tx) => (tx.id === id ? { ...tx, ...updates } : tx))
+        prev.map((tx) => {
+          if (tx.id !== id) return tx;
+          const next: Transaction = {
+            ...tx,
+            ...updates,
+            amount:
+              updates.amount !== undefined ? roundMoney(updates.amount) : tx.amount,
+          };
+          if (resolvedWallet) {
+            next.wallet = resolvedWallet.name;
+            next.walletId = resolvedWallet.id;
+          }
+          // If type switched without a compatible category, keep it consistent.
+          if (
+            updates.type &&
+            updates.type !== tx.type &&
+            updates.category === undefined
+          ) {
+            const firstMatch = categoryRecords.find((c) => c.type === updates.type);
+            if (firstMatch) next.category = firstMatch.name;
+          }
+          return next;
+        })
       );
     },
-    []
+    [walletRecords, categoryRecords]
   );
 
   const deleteTransaction = useCallback((id: string) => {
@@ -477,15 +750,16 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
 
   const moveBudget = useCallback(
     (fromName: string, toName: string, amount: number) => {
-      if (amount <= 0) return;
+      if (!isValidPositiveAmount(amount)) return;
+      const rounded = roundMoney(amount);
       setCategoryRecords((prev) =>
         prev.map((cat) => {
           if (cat.type !== 'expense') return cat;
           if (sameName(cat.name, fromName)) {
-            return { ...cat, limit: Math.max(0, cat.limit - amount) };
+            return { ...cat, limit: Math.max(0, subMoney(cat.limit, rounded)) };
           }
           if (sameName(cat.name, toName)) {
-            return { ...cat, limit: cat.limit + amount };
+            return { ...cat, limit: addMoney(cat.limit, rounded) };
           }
           return cat;
         })
@@ -585,14 +859,24 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addWallet = useCallback((wallet: Omit<WalletRecord, 'id'>) => {
-    setWalletRecords((prev) => [
-      ...prev,
-      {
-        ...wallet,
-        id: makeId('w'),
-        isDefault: prev.some((w) => w.isDefault) ? wallet.isDefault : true,
-      },
-    ]);
+    const trimmed = wallet.name.trim();
+    if (!trimmed) return;
+    const initialBalance = isValidFiniteAmount(wallet.initialBalance)
+      ? roundMoney(wallet.initialBalance)
+      : 0;
+    setWalletRecords((prev) => {
+      if (prev.some((w) => sameName(w.name, trimmed))) return prev;
+      return [
+        ...prev,
+        {
+          ...wallet,
+          name: trimmed,
+          initialBalance,
+          id: makeId('w'),
+          isDefault: prev.some((w) => w.isDefault) ? wallet.isDefault : true,
+        },
+      ];
+    });
   }, []);
 
   const updateWallet = useCallback(
@@ -612,16 +896,31 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       setWalletRecords((prev) =>
         prev.map((w) => (w.id === id ? { ...w, ...updates, name: nextName } : w))
       );
-      // Balances are matched by wallet name, so carry a rename through history.
+      // Keep display names synced alongside immutable wallet IDs.
       if (nextName !== existing.name) {
-        const rename = (n: string) => (n === existing.name ? nextName : n);
         setTransactions((prev) =>
-          prev.map((t) => (t.wallet === existing.name ? { ...t, wallet: nextName } : t))
+          prev.map((t) =>
+            matchesWallet(existing, t.walletId, t.wallet)
+              ? { ...t, wallet: nextName, walletId: existing.id }
+              : t
+          )
         );
         setTransfers((prev) =>
-          prev.map((tr) => ({ ...tr, from: rename(tr.from), to: rename(tr.to) }))
+          prev.map((tr) => ({
+            ...tr,
+            from: matchesWallet(existing, tr.fromId, tr.from) ? nextName : tr.from,
+            fromId: matchesWallet(existing, tr.fromId, tr.from) ? existing.id : tr.fromId,
+            to: matchesWallet(existing, tr.toId, tr.to) ? nextName : tr.to,
+            toId: matchesWallet(existing, tr.toId, tr.to) ? existing.id : tr.toId,
+          }))
         );
-        setBills((prev) => prev.map((b) => ({ ...b, wallet: rename(b.wallet) })));
+        setBills((prev) =>
+          prev.map((b) =>
+            matchesWallet(existing, b.walletId, b.wallet)
+              ? { ...b, wallet: nextName, walletId: existing.id }
+              : b
+          )
+        );
       }
     },
     [walletRecords]
@@ -637,13 +936,16 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       if (!wallet) return null;
       if (walletRecords.length <= 1) return 'You need at least one wallet.';
       const used =
-        transactions.filter((t) => t.wallet === wallet.name).length +
-        transfers.filter((tr) => tr.from === wallet.name || tr.to === wallet.name)
-          .length;
+        transactions.filter((t) => matchesWallet(wallet, t.walletId, t.wallet)).length +
+        transfers.filter(
+          (tr) =>
+            matchesWallet(wallet, tr.fromId, tr.from) ||
+            matchesWallet(wallet, tr.toId, tr.to)
+        ).length;
       if (used > 0) {
         return `${wallet.name} has ${used} ${used === 1 ? 'entry' : 'entries'}. Move or delete them first.`;
       }
-      if (bills.some((b) => b.wallet === wallet.name)) {
+      if (bills.some((b) => matchesWallet(wallet, b.walletId, b.wallet))) {
         return `${wallet.name} pays a recurring bill. Change that bill's wallet first.`;
       }
       setWalletRecords((prev) => {
@@ -659,21 +961,33 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   );
 
   const transferBetweenWallets = useCallback(
-    (fromId: string, toId: string, amount: number) => {
-      if (fromId === toId || amount <= 0) return;
+    (fromId: string, toId: string, amount: number): string | null => {
+      if (!fromId || !toId || fromId === toId) {
+        return 'Pick two different wallets.';
+      }
+      if (!isValidPositiveAmount(amount)) {
+        return 'Enter a valid amount greater than 0.';
+      }
       const fromWallet = walletRecords.find((w) => w.id === fromId);
       const toWallet = walletRecords.find((w) => w.id === toId);
-      if (!fromWallet || !toWallet) return;
+      if (!fromWallet || !toWallet) {
+        return 'One of the selected wallets no longer exists.';
+      }
+      const now = new Date();
       setTransfers((prev) => [
         {
           id: makeId('tr'),
           from: fromWallet.name,
           to: toWallet.name,
-          amount,
-          date: toISODate(new Date()),
+          fromId: fromWallet.id,
+          toId: toWallet.id,
+          amount: roundMoney(amount),
+          date: toISODate(now),
+          createdAt: now.toISOString(),
         },
         ...prev,
       ]);
+      return null;
     },
     [walletRecords]
   );
@@ -683,7 +997,15 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addGoal = useCallback((goal: Omit<SavingsGoal, 'id'>) => {
-    setGoals((prev) => [...prev, { ...goal, id: makeId('g') }]);
+    setGoals((prev) => [
+      ...prev,
+      {
+        ...goal,
+        saved: isValidFiniteAmount(goal.saved) ? Math.max(0, roundMoney(goal.saved)) : 0,
+        target: isValidFiniteAmount(goal.target) ? Math.max(0, roundMoney(goal.target)) : 0,
+        id: makeId('g'),
+      },
+    ]);
   }, []);
 
   const updateGoal = useCallback(
@@ -698,11 +1020,14 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const contributeToGoal = useCallback((goalId: string, amount: number) => {
-    if (!Number.isFinite(amount) || amount === 0) return;
+    if (!isValidFiniteAmount(amount) || toCents(amount) === 0) return;
     setGoals((prev) =>
       prev.map((g) =>
         g.id === goalId
-          ? { ...g, saved: Math.max(0, Math.min(g.target, g.saved + amount)) }
+          ? {
+              ...g,
+              saved: Math.max(0, Math.min(g.target, addMoney(g.saved, amount))),
+            }
           : g
       )
     );
@@ -779,18 +1104,41 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       snap.bills,
     ];
     if (!arrays.every(Array.isArray)) return false;
-    if ((snap.wallets as WalletRecord[]).length === 0) return false;
-    setTransactions(snap.transactions as Transaction[]);
+
+    const cleanWallets = sanitizeWallets(snap.wallets as unknown[]);
+    if (cleanWallets.length === 0) return false;
+
+    const cleanTransactions = sanitizeTransactions(
+      snap.transactions as unknown[],
+      cleanWallets
+    );
+    const cleanTransfers = sanitizeTransfers(
+      snap.transfers as unknown[],
+      cleanWallets
+    );
+    const cleanBills = sanitizeBills(snap.bills as unknown[], cleanWallets);
+
+    // Reject snapshots with corrupted/invalid financial records rather than partial import.
+    if (
+      cleanTransactions.length !== (snap.transactions as unknown[]).length ||
+      cleanTransfers.length !== (snap.transfers as unknown[]).length ||
+      cleanBills.length !== (snap.bills as unknown[]).length
+    ) {
+      return false;
+    }
+
+    setTransactions(cleanTransactions);
     setCategoryRecords(snap.categories as CategoryRecord[]);
-    setWalletRecords(snap.wallets as WalletRecord[]);
-    setTransfers(snap.transfers as TransferRecord[]);
+    setWalletRecords(cleanWallets);
+    setTransfers(cleanTransfers);
     setGoals(snap.goals as SavingsGoal[]);
-    setBills(snap.bills as RecurringBill[]);
+    setBills(cleanBills);
     seededRef.current = true;
     return true;
   }, []);
 
   const resetAll = useCallback(() => {
+    skipNextPersistRef.current = true;
     setTransactions([]);
     setCategoryRecords([]);
     setWalletRecords([DEFAULT_WALLET]);
@@ -800,6 +1148,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     setLastBackup(null);
     setHideAmountsOnHome(false);
     setNoxSuggestionsEnabled(true);
+    setStorageError(null);
     seededRef.current = false;
     removeKeys([STORAGE_KEYS.budget]);
   }, []);
@@ -807,6 +1156,8 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<BudgetContextValue>(
     () => ({
       hydrated,
+      storageError,
+      clearStorageError,
       today,
       period,
       previousPeriod,
@@ -861,6 +1212,8 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       hydrated,
+      storageError,
+      clearStorageError,
       today,
       period,
       previousPeriod,
