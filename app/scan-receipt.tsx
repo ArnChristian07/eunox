@@ -89,6 +89,7 @@ export default function ScanReceiptScreen() {
   const photoUriRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
   const [cameraReady, setCameraReady] = useState(false);
+  const [capturing, setCapturing] = useState(false);
   const [pictureSize, setPictureSize] = useState<string | undefined>(undefined);
   const [torch, setTorch] = useState(false);
   const [step, setStep] = useState<Step>('camera');
@@ -152,7 +153,12 @@ export default function ScanReceiptScreen() {
         .then((sizes) => {
           if (!isMountedRef.current) return;
           const chosen = pickOcrPictureSize(sizes);
-          if (chosen) setPictureSize(chosen);
+          if (chosen) {
+            // Changing pictureSize rebuilds the camera; wait for the next
+            // onCameraReady before allowing a capture.
+            setCameraReady(false);
+            setPictureSize(chosen);
+          }
         })
         .catch(() => {});
     }
@@ -188,21 +194,27 @@ export default function ScanReceiptScreen() {
   };
 
   const handleCapture = async () => {
-    if (!cameraRef.current || !cameraReady || step !== 'camera') return;
+    if (!cameraRef.current || !cameraReady || capturing || step !== 'camera') return;
     setError(null);
-    setStep('reading');
+    // The camera must stay mounted until the photo is taken: switching to the
+    // "reading" step unmounts CameraView and makes CameraX fail the capture.
+    setCapturing(true);
 
     let uri: string;
     try {
       const picture = await cameraRef.current.takePictureAsync({ quality: 0.8 });
+      setCapturing(false);
       if (!isMountedRef.current) {
         deletePhoto(picture.uri);
         return;
       }
       uri = picture.uri;
       setPhoto(uri);
-    } catch {
+    } catch (e) {
       if (!isMountedRef.current) return;
+      setCapturing(false);
+      const reason = e instanceof Error ? e.message : String(e);
+      console.warn('Receipt capture failed:', reason);
       const latest = await getPermission().catch(() => null);
       if (!isMountedRef.current) return;
       setStep('camera');
@@ -211,11 +223,12 @@ export default function ScanReceiptScreen() {
         setTorch(false);
         return;
       }
-      setError("Couldn't take the photo. Try again.");
+      setError("Couldn't take the photo. Try again." + (__DEV__ ? ` (${reason})` : ''));
       return;
     }
     setTorch(false);
     setCameraReady(false);
+    setStep('reading');
 
     try {
       const blocks = await readTextFromPhoto(uri);
@@ -366,7 +379,7 @@ export default function ScanReceiptScreen() {
               permissionLoading={permission === null}
               hasPermission={hasPermission}
               canAskAgain={permission?.canAskAgain !== false}
-              cameraReady={effectiveCameraReady}
+              cameraReady={effectiveCameraReady && !capturing}
               error={error}
               onRequestPermission={() => {
                 requestPermission().catch(() => {});
