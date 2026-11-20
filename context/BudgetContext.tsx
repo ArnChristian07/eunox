@@ -43,10 +43,11 @@ interface BudgetContextValue {
   transactions: Transaction[];
   categories: CategoryBudget[];
   wallets: WalletItem[];
-  addTransaction: (tx: Omit<Transaction, 'id'>) => void;
+  addTransaction: (tx: Omit<Transaction, 'id'>) => string;
   updateTransaction: (id: string, updates: Partial<Transaction>) => void;
   deleteTransaction: (id: string) => void;
   moveBudget: (fromName: string, toName: string, amount: number) => void;
+  raiseCategoryLimit: (categoryName: string, newLimit: number) => void;
   movedSuggestion: boolean;
   hideAmountsOnHome: boolean;
   setHideAmountsOnHome: (v: boolean) => void;
@@ -205,10 +206,11 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   const leftToSpend = Math.max(0, totalBudget - totalSpent);
   const safeToSpendToday = Math.round(leftToSpend / daysLeft);
 
-  const addTransaction = (tx: Omit<Transaction, 'id'>) => {
+  const addTransaction = (tx: Omit<Transaction, 'id'>): string => {
+    const id = Date.now().toString();
     const newTx: Transaction = {
       ...tx,
-      id: Date.now().toString(),
+      id,
       dateGroup: tx.dateGroup ?? 'Today · Fri, Nov 20',
       fullDate: tx.fullDate ?? 'Fri, Nov 20, 2026',
       repeat: tx.repeat ?? 'Never',
@@ -224,6 +226,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         )
       );
     }
+    return id;
   };
 
   const updateTransaction = (id: string, updates: Partial<Transaction>) => {
@@ -233,7 +236,25 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   };
 
   const deleteTransaction = (id: string) => {
+    const target = transactions.find((tx) => tx.id === id);
     setTransactions((prev) => prev.filter((tx) => tx.id !== id));
+    if (target && target.type === 'expense') {
+      setCategories((prev) =>
+        prev.map((cat) =>
+          cat.name.toLowerCase() === target.category.toLowerCase()
+            ? { ...cat, spent: Math.max(0, cat.spent - target.amount) }
+            : cat
+        )
+      );
+    }
+  };
+
+  const raiseCategoryLimit = (categoryName: string, newLimit: number) => {
+    setCategories((prev) =>
+      prev.map((cat) =>
+        cat.name === categoryName ? { ...cat, limit: newLimit } : cat
+      )
+    );
   };
 
   const moveBudget = (fromName: string, toName: string, amount: number) => {
@@ -265,6 +286,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       updateTransaction,
       deleteTransaction,
       moveBudget,
+      raiseCategoryLimit,
       movedSuggestion,
       hideAmountsOnHome,
       setHideAmountsOnHome,

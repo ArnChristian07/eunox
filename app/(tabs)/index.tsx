@@ -6,11 +6,12 @@ import {
   ArrowDownLeft,
   Bus,
   ChevronDown,
+  Plus,
   Search,
   ShoppingCart,
   SlidersHorizontal,
 } from 'lucide-react-native';
-import { NoxMiniIcon } from '@/components/NoxMascot';
+import { NoxMiniIcon, NoxSurprisedMascot } from '@/components/NoxMascot';
 import { useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
 
@@ -52,8 +53,13 @@ export default function HomeScreen() {
   }
 
   const sym = selectedCurrency.symbol;
-  const leftParts = splitAmountParts(leftToSpend);
-  const spentPercent = Math.min(100, Math.round((totalSpent / totalBudget) * 100));
+  const isEmpty = transactions.length === 0;
+  const effectiveSpent = isEmpty ? 0 : totalSpent;
+  const effectiveLeft = isEmpty ? totalBudget : leftToSpend;
+  const leftParts = splitAmountParts(effectiveLeft);
+  const spentPercent = isEmpty
+    ? 0
+    : Math.min(100, Math.round((effectiveSpent / totalBudget) * 100));
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-cream">
@@ -66,32 +72,36 @@ export default function HomeScreen() {
         <View className="flex-row items-center justify-between pt-2 pb-4">
           <View>
             <Text className="text-[13px] font-medium text-warm-gray">
-              Good evening
+              {isEmpty ? 'Welcome to Eunox' : 'Good evening'}
             </Text>
             <Pressable className="flex-row items-center gap-1 mt-0.5">
               <Text className="text-[24px] font-bold tracking-tight text-charcoal">
                 November
               </Text>
-              <ChevronDown size={18} color="#141413" strokeWidth={2.2} />
+              {!isEmpty ? (
+                <ChevronDown size={18} color="#141413" strokeWidth={2.2} />
+              ) : null}
             </Pressable>
           </View>
 
-          <View className="flex-row items-center gap-2.5">
-            <Pressable
-              onPress={() => router.push('/transactions')}
-              accessibilityLabel="Search transactions"
-              className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
-            >
-              <Search size={19} color="#141413" strokeWidth={2} />
-            </Pressable>
-            <Pressable
-              onPress={() => router.push('/settings')}
-              accessibilityLabel="Settings"
-              className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
-            >
-              <SlidersHorizontal size={19} color="#141413" strokeWidth={2} />
-            </Pressable>
-          </View>
+          {!isEmpty ? (
+            <View className="flex-row items-center gap-2.5">
+              <Pressable
+                onPress={() => router.push('/transactions')}
+                accessibilityLabel="Search transactions"
+                className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
+              >
+                <Search size={19} color="#141413" strokeWidth={2} />
+              </Pressable>
+              <Pressable
+                onPress={() => router.push('/settings')}
+                accessibilityLabel="Settings"
+                className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
+              >
+                <SlidersHorizontal size={19} color="#141413" strokeWidth={2} />
+              </Pressable>
+            </View>
+          ) : null}
         </View>
 
         {/* Hero Dark Card */}
@@ -121,33 +131,58 @@ export default function HomeScreen() {
 
           <View className="flex-row items-center justify-between mt-3">
             <Text className="text-[12.5px] text-[#A8A69E]">
-              {sym}
-              {totalSpent.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}{' '}
-              spent of {sym}
-              {totalBudget.toLocaleString('en-US')}
+              {isEmpty
+                ? 'Nothing spent yet'
+                : `${sym}${effectiveSpent.toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })} spent of ${sym}${totalBudget.toLocaleString('en-US')}`}
             </Text>
             <Text className="text-[12.5px] text-[#A8A69E]">
               {daysLeft} days left
             </Text>
           </View>
 
-          <View className="h-[1px] bg-[#2C2C2A] my-4" />
+          {!isEmpty ? (
+            <>
+              <View className="h-[1px] bg-[#2C2C2A] my-4" />
 
-          <View className="flex-row items-center justify-between">
-            <Text className="text-[14px] font-medium text-white/90">
-              Safe to spend today
-            </Text>
-            <Text className="text-[17px] font-bold text-nox-lime">
-              {sym}
-              {safeToSpendToday.toLocaleString('en-US')}
-            </Text>
-          </View>
+              <View className="flex-row items-center justify-between">
+                <Text className="text-[14px] font-medium text-white/90">
+                  Safe to spend today
+                </Text>
+                <Text className="text-[17px] font-bold text-nox-lime">
+                  {sym}
+                  {safeToSpendToday.toLocaleString('en-US')}
+                </Text>
+              </View>
+            </>
+          ) : null}
         </View>
 
-        {/* Nox Noticed Card */}
+        {isEmpty ? (
+          <View className="items-center justify-center mt-16 px-4">
+            <NoxSurprisedMascot size={78} />
+            <Text className="mt-4 text-[18px] font-bold text-charcoal">
+              No transactions yet
+            </Text>
+            <Text className="mt-2 text-center text-[14px] leading-[20px] text-warm-gray max-w-[260px]">
+              Add your first expense, or just tell Nox something like
+              &ldquo;coffee 120&rdquo;.
+            </Text>
+            <Pressable
+              onPress={() => router.push('/add-transaction')}
+              className="mt-6 bg-charcoal rounded-full px-6 py-3.5 flex-row items-center gap-2 active:opacity-85"
+            >
+              <Plus size={18} color="#FFFFFF" strokeWidth={2.2} />
+              <Text className="text-white text-[15px] font-semibold">
+                Add first expense
+              </Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            {/* Nox Noticed Card */}
         {noxSuggestionsEnabled ? (
           <View className="mt-4 bg-white border border-warm-border rounded-3xl p-4 flex-row gap-3.5">
             <View className="pt-0.5">
@@ -242,6 +277,8 @@ export default function HomeScreen() {
             })}
           </View>
         </View>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

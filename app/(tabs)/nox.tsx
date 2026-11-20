@@ -10,8 +10,9 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowUp, History } from 'lucide-react-native';
-import { NoxMiniIcon } from '@/components/NoxMascot';
+import { ArrowUp, History, Square } from 'lucide-react-native';
+import { NoxMiniIcon, NoxThinkingIcon } from '@/components/NoxMascot';
+import { useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
 
 interface ChatMessage {
@@ -26,10 +27,13 @@ const SUGGESTIONS = ['Where can I cut back?', 'Compare to October'];
 
 export default function NoxChatScreen() {
   const { selectedCurrency } = useOnboarding();
+  const { transactions } = useBudget();
   const sym = selectedCurrency.symbol;
 
   const nextIdRef = useRef(1);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [input, setInput] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'm1',
@@ -61,7 +65,16 @@ export default function NoxChatScreen() {
     },
   ]);
 
+  const stopThinking = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    setIsThinking(false);
+  };
+
   const sendMessage = (textToSend?: string) => {
+    if (isThinking) return;
     const trimmed = (textToSend ?? input).trim();
     if (!trimmed) return;
 
@@ -80,14 +93,20 @@ export default function NoxChatScreen() {
       ? `You're spending ${sym}1,204 less than October so far — down about 8% overall.`
       : `Got it. Based on your ${sym}22,000 monthly budget, you still have ${sym}765 safe to spend today.`;
 
-    const noxMsg: ChatMessage = {
-      id: `n-${noxId}`,
-      sender: 'nox',
-      text: replyText,
-    };
-
-    setMessages((prev) => [...prev, userMsg, noxMsg]);
+    setMessages((prev) => [...prev, userMsg]);
     if (!textToSend) setInput('');
+    setIsThinking(true);
+
+    timerRef.current = setTimeout(() => {
+      const noxMsg: ChatMessage = {
+        id: `n-${noxId}`,
+        sender: 'nox',
+        text: replyText,
+      };
+      setMessages((prev) => [...prev, noxMsg]);
+      setIsThinking(false);
+      timerRef.current = null;
+    }, 1100);
   };
 
   return (
@@ -99,26 +118,36 @@ export default function NoxChatScreen() {
         {/* Header */}
         <View className="flex-row items-center justify-between px-5 pt-2 pb-3">
           <View className="flex-row items-center gap-3">
-            <NoxMiniIcon size={38} />
+            {isThinking ? (
+              <NoxThinkingIcon size={38} />
+            ) : (
+              <NoxMiniIcon size={38} />
+            )}
             <View>
               <Text className="text-[22px] font-bold tracking-tight text-charcoal">
                 Nox
               </Text>
               <View className="flex-row items-center gap-1.5">
-                <View className="w-2 h-2 rounded-full bg-[#4D8C2B]" />
+                {!isThinking ? (
+                  <View className="w-2 h-2 rounded-full bg-[#4D8C2B]" />
+                ) : null}
                 <Text className="text-[12.5px] text-warm-gray">
-                  On-device · works offline
+                  {isThinking
+                    ? 'Thinking on your phone...'
+                    : 'On-device · works offline'}
                 </Text>
               </View>
             </View>
           </View>
 
-          <Pressable
-            accessibilityLabel="Chat history"
-            className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
-          >
-            <History size={19} color="#141413" strokeWidth={2} />
-          </Pressable>
+          {!isThinking ? (
+            <Pressable
+              accessibilityLabel="Chat history"
+              className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
+            >
+              <History size={19} color="#141413" strokeWidth={2} />
+            </Pressable>
+          ) : null}
         </View>
 
         {/* Messages */}
@@ -192,27 +221,45 @@ export default function NoxChatScreen() {
               </View>
             )
           )}
+
+          {/* Thinking Skeleton Bubble */}
+          {isThinking ? (
+            <View className="bg-white border border-warm-border rounded-3xl p-4 max-w-[85%]">
+              <View className="flex-row gap-1.5 mb-3">
+                <View className="w-2 h-2 rounded-full bg-[#B5B3AA]" />
+                <View className="w-2 h-2 rounded-full bg-[#C7C5BC]" />
+                <View className="w-2 h-2 rounded-full bg-[#D9D7CE]" />
+              </View>
+              <View className="h-3 rounded-full bg-[#EAE8E1] w-full mb-2" />
+              <View className="h-3 rounded-full bg-[#EAE8E1] w-2/3 mb-3" />
+              <Text className="text-[12px] text-warm-gray">
+                Reading {transactions.length} transactions from November
+              </Text>
+            </View>
+          ) : null}
         </ScrollView>
 
         {/* Suggestions & Input */}
         <View className="px-5 pt-2 pb-2">
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, paddingBottom: 10 }}
-          >
-            {SUGGESTIONS.map((s) => (
-              <Pressable
-                key={s}
-                onPress={() => sendMessage(s)}
-                className="bg-white border border-warm-border rounded-full px-3.5 py-2 active:opacity-75"
-              >
-                <Text className="text-[13px] font-medium text-charcoal">
-                  {s}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+          {!isThinking ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 8, paddingBottom: 10 }}
+            >
+              {SUGGESTIONS.map((s) => (
+                <Pressable
+                  key={s}
+                  onPress={() => sendMessage(s)}
+                  className="bg-white border border-warm-border rounded-full px-3.5 py-2 active:opacity-75"
+                >
+                  <Text className="text-[13px] font-medium text-charcoal">
+                    {s}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
 
           <View className="flex-row items-center gap-2.5">
             <View className="flex-1 bg-white border border-warm-border rounded-full px-4 h-12 justify-center">
@@ -220,17 +267,26 @@ export default function NoxChatScreen() {
                 value={input}
                 onChangeText={setInput}
                 onSubmitEditing={() => sendMessage()}
-                placeholder="Ask about your money..."
+                editable={!isThinking}
+                placeholder={
+                  isThinking
+                    ? 'Nox is answering...'
+                    : 'Ask about your money...'
+                }
                 placeholderTextColor="#8A8880"
                 className="text-[15px] text-charcoal"
               />
             </View>
             <Pressable
-              onPress={() => sendMessage()}
-              accessibilityLabel="Send message"
+              onPress={isThinking ? stopThinking : () => sendMessage()}
+              accessibilityLabel={isThinking ? 'Stop answering' : 'Send message'}
               className="w-12 h-12 rounded-2xl bg-charcoal items-center justify-center active:opacity-85"
             >
-              <ArrowUp size={20} color="#FFFFFF" strokeWidth={2.2} />
+              {isThinking ? (
+                <Square size={14} color="#FFFFFF" fill="#FFFFFF" />
+              ) : (
+                <ArrowUp size={20} color="#FFFFFF" strokeWidth={2.2} />
+              )}
             </Pressable>
           </View>
         </View>

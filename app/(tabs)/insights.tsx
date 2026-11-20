@@ -25,13 +25,24 @@ const BREAKDOWN = [
   { name: 'Other', pct: 7, color: '#DEDCD4' },
 ];
 
+const PLACEHOLDER_BARS = [
+  { height: 56, filled: false },
+  { height: 88, filled: false },
+  { height: 38, filled: true },
+  { height: 70, filled: false },
+  { height: 96, filled: false },
+  { height: 64, filled: false },
+  { height: 48, filled: false },
+];
+
 export default function InsightsScreen() {
   const { selectedCurrency } = useOnboarding();
-  const { totalSpent } = useBudget();
+  const { totalSpent, transactions } = useBudget();
   const [period, setPeriod] = useState<PeriodTab>('Month');
 
   const sym = selectedCurrency.symbol;
   const maxBar = 18;
+  const isInsufficientData = transactions.length < 3;
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-cream">
@@ -46,133 +57,193 @@ export default function InsightsScreen() {
             Insights
           </Text>
 
-          <View className="flex-row bg-[#EAE8E1] p-1 rounded-full">
-            {(['Week', 'Month', 'Year'] as PeriodTab[]).map((tab) => {
-              const active = period === tab;
-              return (
-                <Pressable
-                  key={tab}
-                  onPress={() => setPeriod(tab)}
-                  className={`px-3.5 py-1.5 rounded-full ${
-                    active ? 'bg-white' : 'bg-transparent'
-                  }`}
-                >
-                  <Text
-                    className={`text-[13px] font-semibold ${
-                      active ? 'text-charcoal' : 'text-warm-gray'
+          {!isInsufficientData ? (
+            <View className="flex-row bg-[#EAE8E1] p-1 rounded-full">
+              {(['Week', 'Month', 'Year'] as PeriodTab[]).map((tab) => {
+                const active = period === tab;
+                return (
+                  <Pressable
+                    key={tab}
+                    onPress={() => setPeriod(tab)}
+                    className={`px-3.5 py-1.5 rounded-full ${
+                      active ? 'bg-white' : 'bg-transparent'
                     }`}
                   >
-                    {tab}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Spending Trend Card */}
-        <View className="bg-white border border-warm-border rounded-3xl p-5">
-          <Text className="text-[13.5px] text-warm-gray">
-            Spent in November so far
-          </Text>
-          <Text className="mt-1 text-[28px] font-bold tracking-tight text-charcoal">
-            {sym}
-            {totalSpent.toLocaleString('en-US', {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}
-          </Text>
-          <View className="flex-row items-center gap-1 mt-1">
-            <ArrowDown size={13} color="#66655E" strokeWidth={2.2} />
-            <Text className="text-[13px] text-warm-gray">
-              {sym}1,204 less than October
-            </Text>
-          </View>
-
-          {/* Bar Chart */}
-          <View className="flex-row items-end justify-between mt-7 h-[150px] gap-2">
-            {MONTHLY_BARS.map((bar) => {
-              const heightPct = Math.round((bar.value / maxBar) * 100);
-              return (
-                <View key={bar.label} className="flex-1 items-center">
-                  <Text className="text-[11px] font-medium text-warm-gray mb-1.5">
-                    {bar.display}
-                  </Text>
-                  <View className="w-full h-[106px] justify-end">
-                    <View
-                      style={{ height: `${heightPct}%` }}
-                      className={`w-full rounded-xl ${
-                        bar.active
-                          ? 'bg-nox-lime border-[1.5px] border-charcoal'
-                          : 'bg-[#E5E3DC]'
+                    <Text
+                      className={`text-[13px] font-semibold ${
+                        active ? 'text-charcoal' : 'text-warm-gray'
                       }`}
-                    />
-                  </View>
-                  <Text
-                    className={`mt-2 text-[12px] ${
-                      bar.active
-                        ? 'font-bold text-charcoal'
-                        : 'font-medium text-warm-gray'
+                    >
+                      {tab}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+        </View>
+
+        {isInsufficientData ? (
+          <>
+            <View className="bg-white border border-warm-border rounded-3xl p-5">
+              {/* Dashed Placeholder Bars */}
+              <View className="flex-row items-end justify-between h-[110px] gap-2 px-1">
+                {PLACEHOLDER_BARS.map((bar, idx) => (
+                  <View
+                    key={idx}
+                    style={{ height: bar.height }}
+                    className={`flex-1 rounded-xl ${
+                      bar.filled
+                        ? 'bg-nox-lime border-[1.5px] border-charcoal'
+                        : 'border border-dashed border-[#D5D3CA]'
                     }`}
-                  >
-                    {bar.label}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Where It Went */}
-        <Text className="mt-6 mb-3 text-[18px] font-bold text-charcoal">
-          Where it went
-        </Text>
-
-        <View className="h-2.5 rounded-full flex-row overflow-hidden gap-0.5">
-          {BREAKDOWN.map((item) => (
-            <View
-              key={item.name}
-              style={{ width: `${item.pct}%`, backgroundColor: item.color }}
-              className="h-full"
-            />
-          ))}
-        </View>
-
-        <View className="flex-row flex-wrap mt-3.5 gap-y-2.5">
-          {BREAKDOWN.map((item) => (
-            <View
-              key={item.name}
-              className="w-1/2 flex-row items-center justify-between pr-4"
-            >
-              <View className="flex-row items-center gap-2">
-                <View
-                  style={{ backgroundColor: item.color }}
-                  className="w-2.5 h-2.5 rounded-sm"
-                />
-                <Text className="text-[14px] text-charcoal">{item.name}</Text>
+                  />
+                ))}
               </View>
-              <Text className="text-[14px] font-bold text-charcoal">
-                {item.pct}%
+
+              <Text className="mt-6 text-center text-[18px] font-bold text-charcoal">
+                Not enough data yet
+              </Text>
+              <Text className="mt-1.5 text-center text-[13.5px] text-warm-gray">
+                Track for a week and your trends show up here.
+              </Text>
+
+              <View className="flex-row items-center justify-between mt-6 mb-2">
+                <Text className="text-[13px] font-semibold text-charcoal">
+                  Days tracked
+                </Text>
+                <Text className="text-[13px] text-warm-gray">3 of 7</Text>
+              </View>
+
+              <View className="flex-row gap-1.5">
+                {[0, 1, 2, 3, 4, 5, 6].map((dayIdx) => (
+                  <View
+                    key={dayIdx}
+                    className={`flex-1 h-1.5 rounded-full ${
+                      dayIdx < 3 ? 'bg-charcoal' : 'bg-[#E5E3DC]'
+                    }`}
+                  />
+                ))}
+              </View>
+            </View>
+
+            <View className="mt-4 bg-white border border-warm-border rounded-3xl p-4 flex-row items-center gap-3.5">
+              <NoxMiniIcon size={34} />
+              <Text className="flex-1 text-[14px] leading-[20px] text-charcoal">
+                I&apos;ll write your first recap on{' '}
+                <Text className="font-bold">Friday, Nov 27</Text>.
               </Text>
             </View>
-          ))}
-        </View>
+          </>
+        ) : (
+          <>
+            {/* Spending Trend Card */}
+            <View className="bg-white border border-warm-border rounded-3xl p-5">
+              <Text className="text-[13.5px] text-warm-gray">
+                Spent in November so far
+              </Text>
+              <Text className="mt-1 text-[28px] font-bold tracking-tight text-charcoal">
+                {sym}
+                {totalSpent.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </Text>
+              <View className="flex-row items-center gap-1 mt-1">
+                <ArrowDown size={13} color="#66655E" strokeWidth={2.2} />
+                <Text className="text-[13px] text-warm-gray">
+                  {sym}1,204 less than October
+                </Text>
+              </View>
 
-        {/* Nox Monthly Recap Dark Card */}
-        <View className="mt-6 bg-charcoal rounded-3xl p-4 flex-row gap-3.5">
-          <View className="pt-0.5">
-            <NoxMiniIcon size={34} />
-          </View>
-          <View className="flex-1">
-            <Text className="text-[13px] font-semibold text-nox-lime">
-              Nox&apos;s monthly recap
+              {/* Bar Chart */}
+              <View className="flex-row items-end justify-between mt-7 h-[150px] gap-2">
+                {MONTHLY_BARS.map((bar) => {
+                  const heightPct = Math.round((bar.value / maxBar) * 100);
+                  return (
+                    <View key={bar.label} className="flex-1 items-center">
+                      <Text className="text-[11px] font-medium text-warm-gray mb-1.5">
+                        {bar.display}
+                      </Text>
+                      <View className="w-full h-[106px] justify-end">
+                        <View
+                          style={{ height: `${heightPct}%` }}
+                          className={`w-full rounded-xl ${
+                            bar.active
+                              ? 'bg-nox-lime border-[1.5px] border-charcoal'
+                              : 'bg-[#E5E3DC]'
+                          }`}
+                        />
+                      </View>
+                      <Text
+                        className={`mt-2 text-[12px] ${
+                          bar.active
+                            ? 'font-bold text-charcoal'
+                            : 'font-medium text-warm-gray'
+                        }`}
+                      >
+                        {bar.label}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Where It Went */}
+            <Text className="mt-6 mb-3 text-[18px] font-bold text-charcoal">
+              Where it went
             </Text>
-            <Text className="mt-1 text-[14px] leading-[20px] text-white/90">
-              Your weekends cost more than twice your weekdays, mostly food
-              delivery. One home-cooked Saturday saves about {sym}400.
-            </Text>
-          </View>
-        </View>
+
+            <View className="h-2.5 rounded-full flex-row overflow-hidden gap-0.5">
+              {BREAKDOWN.map((item) => (
+                <View
+                  key={item.name}
+                  style={{ width: `${item.pct}%`, backgroundColor: item.color }}
+                  className="h-full"
+                />
+              ))}
+            </View>
+
+            <View className="flex-row flex-wrap mt-3.5 gap-y-2.5">
+              {BREAKDOWN.map((item) => (
+                <View
+                  key={item.name}
+                  className="w-1/2 flex-row items-center justify-between pr-4"
+                >
+                  <View className="flex-row items-center gap-2">
+                    <View
+                      style={{ backgroundColor: item.color }}
+                      className="w-2.5 h-2.5 rounded-sm"
+                    />
+                    <Text className="text-[14px] text-charcoal">
+                      {item.name}
+                    </Text>
+                  </View>
+                  <Text className="text-[14px] font-bold text-charcoal">
+                    {item.pct}%
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Nox Monthly Recap Dark Card */}
+            <View className="mt-6 bg-charcoal rounded-3xl p-4 flex-row gap-3.5">
+              <View className="pt-0.5">
+                <NoxMiniIcon size={34} />
+              </View>
+              <View className="flex-1">
+                <Text className="text-[13px] font-semibold text-nox-lime">
+                  Nox&apos;s monthly recap
+                </Text>
+                <Text className="mt-1 text-[14px] leading-[20px] text-white/90">
+                  Your weekends cost more than twice your weekdays, mostly food
+                  delivery. One home-cooked Saturday saves about {sym}400.
+                </Text>
+              </View>
+            </View>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

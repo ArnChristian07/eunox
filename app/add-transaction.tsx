@@ -4,9 +4,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import {
   Calendar,
+  Check,
   Delete,
   Pencil,
   ScanLine,
+  Undo2,
   Wallet,
   X,
 } from 'lucide-react-native';
@@ -33,13 +35,14 @@ const KEYPAD_ROWS = [
 
 export default function AddTransactionModal() {
   const { selectedCurrency } = useOnboarding();
-  const { addTransaction } = useBudget();
+  const { addTransaction, deleteTransaction, categories, daysLeft } = useBudget();
   const sym = selectedCurrency.symbol;
 
   const [txType, setTxType] = useState<TransactionType>('expense');
   const [amountStr, setAmountStr] = useState('180');
   const [quickText, setQuickText] = useState('lunch 180 yesterday');
   const [selectedCategory, setSelectedCategory] = useState('Food');
+  const [savedId, setSavedId] = useState<string | null>(null);
 
   const numericAmount = parseFloat(amountStr) || 0;
   const [wholePart, decPart] = numericAmount.toFixed(2).split('.');
@@ -74,7 +77,7 @@ export default function AddTransactionModal() {
 
   const handleSave = () => {
     if (numericAmount <= 0) return;
-    addTransaction({
+    const id = addTransaction({
       title: quickText.trim() || selectedCategory,
       category: txType === 'income' ? 'Income' : selectedCategory,
       amount: numericAmount,
@@ -82,8 +85,137 @@ export default function AddTransactionModal() {
       dateLabel: 'Today',
       wallet: 'Cash wallet',
     });
-    router.back();
+    setSavedId(id);
   };
+
+  const handleUndo = () => {
+    if (savedId) {
+      deleteTransaction(savedId);
+    }
+    setSavedId(null);
+  };
+
+  const handleAddAnother = () => {
+    setSavedId(null);
+    setAmountStr('0');
+    setQuickText('');
+  };
+
+  if (savedId) {
+    const budgetCat = categories.find(
+      (c) => c.name.toLowerCase() === selectedCategory.toLowerCase()
+    );
+    const pct =
+      budgetCat && budgetCat.limit > 0
+        ? Math.min(100, Math.round((budgetCat.spent / budgetCat.limit) * 100))
+        : 0;
+    const remaining = budgetCat
+      ? Math.max(0, Math.round(budgetCat.limit - budgetCat.spent))
+      : 0;
+
+    return (
+      <SafeAreaView className="flex-1 bg-cream">
+        <View className="flex-1 px-5 pt-2 pb-6 justify-between">
+          <View className="items-end">
+            <Pressable
+              onPress={() => router.back()}
+              accessibilityLabel="Close"
+              className="w-10 h-10 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
+            >
+              <X size={19} color="#141413" strokeWidth={2} />
+            </Pressable>
+          </View>
+
+          <View className="items-center px-2">
+            <View className="w-16 h-16 rounded-3xl bg-nox-lime border-[1.75px] border-charcoal items-center justify-center">
+              <Check size={28} color="#141413" strokeWidth={2.5} />
+            </View>
+
+            <Text className="mt-5 text-[22px] font-bold text-charcoal">
+              Saved
+            </Text>
+            <Text className="mt-1.5 text-[36px] font-bold tracking-tight text-charcoal">
+              {sym}
+              {numericAmount.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </Text>
+            <Text className="mt-1.5 text-[14px] text-warm-gray">
+              {selectedCategory} · Thu, Nov 19 · Cash wallet
+            </Text>
+
+            {budgetCat ? (
+              <View className="mt-7 w-full bg-white border border-warm-border rounded-3xl p-4">
+                <View className="flex-row items-center justify-between mb-2.5">
+                  <Text className="text-[14.5px] font-semibold text-charcoal">
+                    {budgetCat.name} budget
+                  </Text>
+                  <Text className="text-[14px]">
+                    <Text className="font-bold text-charcoal">
+                      {sym}
+                      {budgetCat.spent.toLocaleString('en-US')}
+                    </Text>
+                    <Text className="text-warm-gray">
+                      {' '}
+                      / {sym}
+                      {budgetCat.limit.toLocaleString('en-US')}
+                    </Text>
+                  </Text>
+                </View>
+
+                <View className="h-[5px] rounded-full bg-[#ECEAE2] overflow-hidden">
+                  <View
+                    style={{ width: `${pct}%` }}
+                    className={`h-full rounded-full ${
+                      pct >= 80 ? 'bg-[#D96B27]' : 'bg-charcoal'
+                    }`}
+                  />
+                </View>
+
+                <Text className="mt-2 text-[12.5px] font-medium text-[#B85318]">
+                  {pct}% used · {sym}
+                  {remaining.toLocaleString('en-US')} left for {daysLeft} days
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View>
+            <View className="flex-row gap-3">
+              <Pressable
+                onPress={handleAddAnother}
+                className="flex-1 bg-white border border-warm-border rounded-full h-[52px] items-center justify-center active:opacity-75"
+              >
+                <Text className="text-[15px] font-semibold text-charcoal">
+                  Add another
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => router.back()}
+                className="flex-1 bg-charcoal rounded-full h-[52px] items-center justify-center active:opacity-85"
+              >
+                <Text className="text-[15px] font-semibold text-white">
+                  Done
+                </Text>
+              </Pressable>
+            </View>
+
+            <Pressable
+              onPress={handleUndo}
+              className="mt-4 py-2 flex-row items-center justify-center gap-1.5 active:opacity-60"
+            >
+              <Undo2 size={15} color="#66655E" strokeWidth={2} />
+              <Text className="text-[14px] font-medium text-warm-gray">
+                Undo
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-cream">

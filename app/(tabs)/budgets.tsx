@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Plus } from 'lucide-react-native';
+import { AlertTriangle, Plus } from 'lucide-react-native';
 import { NoxMiniIcon } from '@/components/NoxMascot';
 import { useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
@@ -23,11 +23,19 @@ export default function BudgetsScreen() {
     daysLeft,
     categories,
     moveBudget,
+    raiseCategoryLimit,
     movedSuggestion,
   } = useBudget();
 
   const sym = selectedCurrency.symbol;
   const overallPercent = Math.min(100, Math.round((totalSpent / totalBudget) * 100));
+
+  const overBudgetCat = categories.find((c) => c.spent > c.limit);
+  const funCat = categories.find((c) => c.name === 'Fun');
+  const overAmount = overBudgetCat
+    ? Math.ceil(overBudgetCat.spent - overBudgetCat.limit)
+    : 0;
+  const funUnused = funCat ? Math.max(0, Math.floor(funCat.limit - funCat.spent)) : 0;
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-cream">
@@ -56,39 +64,83 @@ export default function BudgetsScreen() {
           </Pressable>
         </View>
 
-        {/* Summary Card */}
-        <View className="bg-white border border-warm-border rounded-3xl p-5">
-          <View className="flex-row items-baseline justify-between">
-            <Text className="text-[26px] font-bold tracking-tight text-charcoal">
-              {sym}
-              {totalSpent.toLocaleString('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
-            </Text>
-            <Text className="text-[14px] text-warm-gray">
-              of {sym}
-              {totalBudget.toLocaleString('en-US')}
+        {/* Over-budget Alert Banner OR Summary Card */}
+        {overBudgetCat ? (
+          <View className="bg-[#FCEEE4] border border-[#F2CBB0] rounded-3xl p-4">
+            <View className="flex-row items-start gap-2.5">
+              <AlertTriangle size={18} color="#B85318" strokeWidth={2.2} />
+              <View className="flex-1">
+                <Text className="text-[15px] font-bold text-[#9A3F0D]">
+                  {overBudgetCat.name} is {sym}
+                  {overAmount.toLocaleString('en-US')} over budget
+                </Text>
+                <Text className="mt-1 text-[13.5px] leading-[19px] text-[#7D3A13]">
+                  Nox can cover it from Fun, where {sym}
+                  {funUnused.toLocaleString('en-US')} is still unused.
+                </Text>
+              </View>
+            </View>
+
+            <View className="flex-row gap-2.5 mt-4">
+              <Pressable
+                onPress={() =>
+                  moveBudget('Fun', overBudgetCat.name, overAmount)
+                }
+                className="bg-charcoal rounded-full px-4 py-2.5 active:opacity-85"
+              >
+                <Text className="text-[13.5px] font-semibold text-white">
+                  Move {sym}
+                  {overAmount.toLocaleString('en-US')} from Fun
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() =>
+                  raiseCategoryLimit(overBudgetCat.name, overBudgetCat.spent)
+                }
+                className="bg-white border border-[#E6C5AE] rounded-full px-4 py-2.5 active:opacity-75"
+              >
+                <Text className="text-[13.5px] font-semibold text-charcoal">
+                  Raise limit
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <View className="bg-white border border-warm-border rounded-3xl p-5">
+            <View className="flex-row items-baseline justify-between">
+              <Text className="text-[26px] font-bold tracking-tight text-charcoal">
+                {sym}
+                {totalSpent.toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </Text>
+              <Text className="text-[14px] text-warm-gray">
+                of {sym}
+                {totalBudget.toLocaleString('en-US')}
+              </Text>
+            </View>
+
+            <View className="h-[7px] rounded-full bg-[#ECEAE2] mt-3.5 overflow-hidden">
+              <View
+                style={{ width: `${overallPercent}%` }}
+                className="h-full rounded-full bg-charcoal"
+              />
+            </View>
+
+            <Text className="mt-2.5 text-[13px] text-warm-gray">
+              {overallPercent}% used · {daysLeft} days left
             </Text>
           </View>
-
-          <View className="h-[7px] rounded-full bg-[#ECEAE2] mt-3.5 overflow-hidden">
-            <View
-              style={{ width: `${overallPercent}%` }}
-              className="h-full rounded-full bg-charcoal"
-            />
-          </View>
-
-          <Text className="mt-2.5 text-[13px] text-warm-gray">
-            {overallPercent}% used · {daysLeft} days left
-          </Text>
-        </View>
+        )}
 
         {/* Category Breakdown */}
         <View className="mt-5">
           {categories.map((cat, index) => {
             const pct = cat.limit > 0 ? Math.round((cat.spent / cat.limit) * 100) : 0;
+            const isOver = cat.spent > cat.limit;
             const isWarning = pct >= 80;
+            const catOverAmt = Math.ceil(cat.spent - cat.limit);
 
             return (
               <View
@@ -104,7 +156,11 @@ export default function BudgetsScreen() {
                     {cat.name}
                   </Text>
                   <Text className="text-[14.5px]">
-                    <Text className="font-bold text-charcoal">
+                    <Text
+                      className={`font-bold ${
+                        isOver ? 'text-[#B85318]' : 'text-charcoal'
+                      }`}
+                    >
                       {formatCompactMoney(cat.spent, sym)}
                     </Text>
                     <Text className="text-warm-gray">
@@ -123,7 +179,12 @@ export default function BudgetsScreen() {
                   />
                 </View>
 
-                {isWarning ? (
+                {isOver ? (
+                  <Text className="mt-1.5 text-[12px] font-medium text-[#B85318]">
+                    {pct}% · {sym}
+                    {catOverAmt.toLocaleString('en-US')} over
+                  </Text>
+                ) : isWarning ? (
                   <Text className="mt-1.5 text-[12px] font-medium text-[#B85318]">
                     {pct}% used
                   </Text>
@@ -134,22 +195,26 @@ export default function BudgetsScreen() {
         </View>
 
         {/* Nox Rebalance Suggestion */}
-        <View className="mt-4 bg-white border border-warm-border rounded-3xl p-4 flex-row items-center gap-3">
-          <NoxMiniIcon size={34} />
-          <Text className="flex-1 text-[13.5px] leading-[18px] text-charcoal">
-            {movedSuggestion
-              ? `Moved ${sym}800 from Fun to Food. Your budgets are updated.`
-              : `Move ${sym}800 from Fun to Food? You've only used 17% of Fun.`}
-          </Text>
-          {!movedSuggestion ? (
-            <Pressable
-              onPress={() => moveBudget('Fun', 'Food', 800)}
-              className="bg-nox-lime rounded-2xl px-4 py-2.5 active:opacity-80"
-            >
-              <Text className="text-[14px] font-bold text-charcoal">Move</Text>
-            </Pressable>
-          ) : null}
-        </View>
+        {!overBudgetCat ? (
+          <View className="mt-4 bg-white border border-warm-border rounded-3xl p-4 flex-row items-center gap-3">
+            <NoxMiniIcon size={34} />
+            <Text className="flex-1 text-[13.5px] leading-[18px] text-charcoal">
+              {movedSuggestion
+                ? `Moved ${sym}800 from Fun to Food. Your budgets are updated.`
+                : `Move ${sym}800 from Fun to Food? You've only used 17% of Fun.`}
+            </Text>
+            {!movedSuggestion ? (
+              <Pressable
+                onPress={() => moveBudget('Fun', 'Food', 800)}
+                className="bg-nox-lime rounded-2xl px-4 py-2.5 active:opacity-80"
+              >
+                <Text className="text-[14px] font-bold text-charcoal">
+                  Move
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

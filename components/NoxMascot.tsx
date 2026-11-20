@@ -111,3 +111,56 @@ export function NoxSleepingMascot({ size = 84 }: NoxMascotProps) {
     </Svg>
   );
 }
+
+export function NoxSurprisedMascot({ size = 84 }: NoxMascotProps) {
+  return (
+    <Svg width={size} height={size * 1.1} viewBox="0 0 128 140" fill="none">
+      <Path
+        d="M64 26V10"
+        stroke="#141413"
+        strokeWidth="5"
+        strokeLinecap="round"
+      />
+      <Path
+        d="M65 13C72 7 82 8 86 14C80 18 71 18 65 13Z"
+        fill="#141413"
+      />
+      <Circle
+        cx="64"
+        cy="78"
+        r="50"
+        fill="#C5EC4B"
+        stroke="#141413"
+        strokeWidth="5"
+      />
+      <Ellipse cx="48" cy="72" rx="5.5" ry="8" fill="#141413" />
+      <Ellipse cx="80" cy="72" rx="5.5" ry="8" fill="#141413" />
+      <Circle cx="64" cy="93" r="5.5" fill="#141413" />
+    </Svg>
+  );
+}
+
+export function NoxThinkingIcon({ size = 38 }: NoxMascotProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 38 38" fill="none">
+      <Path
+        d="M19 6V2.5"
+        stroke="#141413"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <Path d="M19.5 3.5C21.5 2 24 2.2 25 3.8C23.2 4.8 21 4.8 19.5 3.5Z" fill="#141413" />
+      <Circle
+        cx="19"
+        cy="20"
+        r="14"
+        fill="#C5EC4B"
+        stroke="#141413"
+        strokeWidth="2"
+      />
+      <Path d="M12.5 18H16" stroke="#141413" strokeWidth="2" strokeLinecap="round" />
+      <Path d="M22 18H25.5" stroke="#141413" strokeWidth="2" strokeLinecap="round" />
+      <Path d="M16.5 24H21.5" stroke="#141413" strokeWidth="2" strokeLinecap="round" />
+    </Svg>
+  );
+}
