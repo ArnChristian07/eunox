@@ -244,9 +244,14 @@ export default function ScanReceiptScreen() {
         notice,
       });
       setStep('review');
-    } catch {
+    } catch (e) {
       if (!isMountedRef.current) return;
-      startManualEntry("Nox couldn't read this photo. Type the details in, or retake it.");
+      const reason = e instanceof Error ? e.message : String(e);
+      console.warn('Receipt text recognition failed:', reason);
+      startManualEntry(
+        "Nox couldn't read this photo. Type the details in, or retake it." +
+          (__DEV__ ? ` (${reason})` : '')
+      );
     }
   };
 
