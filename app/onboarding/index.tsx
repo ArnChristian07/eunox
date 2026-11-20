@@ -1,9 +1,8 @@
-import React from 'react';
-import { Pressable, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { NoxMascot } from '@/components/NoxMascot';
 import { router } from 'expo-router';
 import { Download, MessageSquare, Smartphone, WifiOff } from 'lucide-react-native';
-import { NoxMascot } from '@/components/NoxMascot';
+import { Pressable, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const FEATURES = [
   {

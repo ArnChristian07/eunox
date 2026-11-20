@@ -1,6 +1,3 @@
-import React, { useEffect, useState } from 'react';
-import { Keyboard, Platform, Pressable, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import {
   BarChart2,
@@ -9,6 +6,9 @@ import {
   PieChart,
   Plus,
 } from 'lucide-react-native';
+import { useEffect, useState } from 'react';
+import { Keyboard, Platform, Pressable, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface FloatingTabBarProps {
   state: {

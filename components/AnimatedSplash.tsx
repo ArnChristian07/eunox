@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import { Smartphone } from 'lucide-react-native';
+import { useEffect } from 'react';
 import { Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
   FadeIn,
@@ -12,8 +13,7 @@ import Animated, {
   withTiming,
   ZoomIn,
 } from 'react-native-reanimated';
-import { StatusBar } from 'expo-status-bar';
-import { Smartphone } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NoxSplashMascot } from './NoxMascot';
 
 interface AnimatedSplashProps {
