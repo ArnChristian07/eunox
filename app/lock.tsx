@@ -1,129 +1,78 @@
 import React, { useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Delete, Fingerprint } from 'lucide-react-native';
+import { ChevronLeft } from 'lucide-react-native';
 import { NoxSleepingMascot } from '@/components/NoxMascot';
+import { PinPad } from '@/components/PinPad';
+import { useLock } from '@/context/LockContext';
 
-const KEYPAD_ROWS = [
-  ['1', '2', '3'],
-  ['4', '5', '6'],
-  ['7', '8', '9'],
-  ['bio', '0', 'back'],
-];
+type Step = 'current' | 'new' | 'confirm';
 
-export default function LockScreen() {
-  const [pin, setPin] = useState('');
+const COPY: Record<Step, { title: string; subtitle: string }> = {
+  current: { title: 'Enter current PIN', subtitle: 'To change your app lock PIN' },
+  new: { title: 'Choose a PIN', subtitle: "4 digits you'll use to open Eunox" },
+  confirm: { title: 'Confirm your PIN', subtitle: 'Enter the same 4 digits again' },
+};
 
-  const handlePress = (key: string) => {
-    if (key === 'bio') {
+/** Sets up or changes the app lock PIN. Unlocking is handled by LockOverlay. */
+export default function LockSetupScreen() {
+  const { enabled, verifyPin, setPin } = useLock();
+  const [step, setStep] = useState<Step>(enabled ? 'current' : 'new');
+  const [firstPin, setFirstPin] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const handleComplete = async (pin: string) => {
+    if (step === 'current') {
+      if (!verifyPin(pin)) {
+        setError('Wrong PIN');
+        return false;
+      }
+      setError(null);
+      setStep('new');
+      return true;
+    }
+    if (step === 'new') {
+      setFirstPin(pin);
+      setError(null);
+      setStep('confirm');
+      return true;
+    }
+    if (pin !== firstPin) {
+      setError("PINs didn't match. Try again.");
+      setFirstPin('');
+      setStep('new');
+      return false;
+    }
+    try {
+      await setPin(pin);
       router.back();
-      return;
-    }
-    if (key === 'back') {
-      setPin((prev) => prev.slice(0, -1));
-      return;
-    }
-    if (pin.length >= 4) return;
-    const next = `${pin}${key}`;
-    setPin(next);
-    if (next.length === 4) {
-      setTimeout(() => {
-        router.back();
-      }, 150);
+      return true;
+    } catch {
+      setError("Couldn't save the PIN on this phone");
+      return false;
     }
   };
 
   return (
     <SafeAreaView className="flex-1 bg-cream">
-      <View className="flex-1 px-7 justify-between pt-14 pb-8">
-        {/* Top Mascot & PIN Dots */}
-        <View className="items-center">
-          <NoxSleepingMascot size={78} />
-
-          <Text className="mt-5 text-[24px] font-bold tracking-tight text-charcoal">
-            Eunox is locked
-          </Text>
-          <Text className="mt-1.5 text-[14.5px] text-warm-gray">
-            Enter your 4-digit PIN
-          </Text>
-
-          <View className="flex-row gap-4 mt-7">
-            {[0, 1, 2, 3].map((idx) => {
-              const filled = idx < pin.length;
-              return (
-                <View
-                  key={idx}
-                  className={`w-3.5 h-3.5 rounded-full border-[1.75px] border-charcoal ${
-                    filled ? 'bg-charcoal' : 'bg-transparent'
-                  }`}
-                />
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Numeric Keypad */}
-        <View>
-          <View className="gap-3">
-            {KEYPAD_ROWS.map((row, rIdx) => (
-              <View key={rIdx} className="flex-row gap-3">
-                {row.map((key) => {
-                  if (key === 'bio') {
-                    return (
-                      <Pressable
-                        key={key}
-                        onPress={() => handlePress(key)}
-                        accessibilityLabel="Use biometrics"
-                        className="flex-1 h-16 items-center justify-center active:opacity-60"
-                      >
-                        <Fingerprint size={26} color="#141413" strokeWidth={1.75} />
-                      </Pressable>
-                    );
-                  }
-                  if (key === 'back') {
-                    return (
-                      <Pressable
-                        key={key}
-                        onPress={() => handlePress(key)}
-                        accessibilityLabel="Backspace"
-                        className="flex-1 h-16 items-center justify-center active:opacity-60"
-                      >
-                        <Delete size={24} color="#141413" strokeWidth={1.8} />
-                      </Pressable>
-                    );
-                  }
-                  return (
-                    <Pressable
-                      key={key}
-                      onPress={() => handlePress(key)}
-                      className="flex-1 h-16 rounded-2xl bg-white items-center justify-center active:bg-[#EAE8E1]"
-                    >
-                      <Text className="text-[24px] font-semibold text-charcoal">
-                        {key}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ))}
-          </View>
-
-          <Pressable
-            onPress={() =>
-              Alert.alert(
-                'Forgot PIN?',
-                'Use your device fingerprint or restore from an encrypted backup file.'
-              )
-            }
-            className="mt-7 py-2 items-center active:opacity-60"
-          >
-            <Text className="text-[14.5px] font-semibold text-charcoal">
-              Forgot PIN?
-            </Text>
-          </Pressable>
-        </View>
+      <View className="px-5 pt-2">
+        <Pressable
+          onPress={() => router.back()}
+          accessibilityLabel="Back"
+          className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
+        >
+          <ChevronLeft size={20} color="#141413" strokeWidth={2} />
+        </Pressable>
       </View>
+      <PinPad
+        key={step}
+        title={COPY[step].title}
+        subtitle={COPY[step].subtitle}
+        error={error}
+        header={<NoxSleepingMascot size={64} />}
+        onComplete={handleComplete}
+      />
     </SafeAreaView>
   );
 }

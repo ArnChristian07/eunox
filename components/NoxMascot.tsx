@@ -164,3 +164,41 @@ export function NoxThinkingIcon({ size = 38 }: NoxMascotProps) {
     </Svg>
   );
 }
+
+export function NoxSplashMascot({ size = 104 }: NoxMascotProps) {
+  return (
+    <Svg width={size} height={size * 1.1} viewBox="0 0 128 140" fill="none">
+      {/* White Stem */}
+      <Path
+        d="M64 26V10"
+        stroke="#FFFFFF"
+        strokeWidth="5"
+        strokeLinecap="round"
+      />
+      {/* White Leaf */}
+      <Path
+        d="M65 13C72 7 82 8 86 14C80 18 71 18 65 13Z"
+        fill="#FFFFFF"
+      />
+      {/* Body with White Outline */}
+      <Circle
+        cx="64"
+        cy="78"
+        r="50"
+        fill="#C5EC4B"
+        stroke="#FFFFFF"
+        strokeWidth="5"
+      />
+      {/* Eyes */}
+      <Ellipse cx="48" cy="73" rx="5.5" ry="8" fill="#141413" />
+      <Ellipse cx="80" cy="73" rx="5.5" ry="8" fill="#141413" />
+      {/* Smile */}
+      <Path
+        d="M52 91C56.5 96.5 71.5 96.5 76 91"
+        stroke="#141413"
+        strokeWidth="4.5"
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}

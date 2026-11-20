@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -16,70 +17,119 @@ import {
   ArrowUp,
   ChevronLeft,
   ChevronRight,
-  GripVertical,
   Plus,
+  Trash2,
   X,
 } from 'lucide-react-native';
 import { NoxMiniIcon } from '@/components/NoxMascot';
-import { useBudget } from '@/context/BudgetContext';
+import { CategoryBudget, CategoryType, useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
+import { parseAmount } from '@/lib/format';
 
 type CategoryTab = 'expenses' | 'income';
 
-const EXPENSE_COUNTS: Record<string, number> = {
-  Food: 23,
-  Transport: 31,
-  Bills: 4,
-  Shopping: 6,
-  Health: 2,
-  Fun: 3,
-};
-
-const INCOME_CATEGORIES = [
-  { id: 'inc-1', name: 'Salary', count: 2 },
-  { id: 'inc-2', name: 'Freelance', count: 3 },
-  { id: 'inc-3', name: 'Other', count: 1 },
-];
-
 export default function CategoriesScreen() {
   const { selectedCurrency } = useOnboarding();
-  const { categories, addCategory, updateCategory, reorderCategory } =
-    useBudget();
+  const {
+    expenseCategories,
+    incomeCategories,
+    addCategory,
+    updateCategory,
+    deleteCategory,
+    reorderCategory,
+  } = useBudget();
   const sym = selectedCurrency.symbol;
 
   const [tab, setTab] = useState<CategoryTab>('expenses');
   const [modalVisible, setModalVisible] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<CategoryBudget | null>(null);
   const [catName, setCatName] = useState('');
   const [catLimit, setCatLimit] = useState('');
-  const [modalType, setModalType] = useState<'expense' | 'income'>('expense');
+  const [modalType, setModalType] = useState<CategoryType>('expense');
   const [autoMovePast, setAutoMovePast] = useState(true);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const list = tab === 'expenses' ? expenseCategories : incomeCategories;
+  const isIncomeTab = tab === 'income';
 
   const openNewModal = () => {
-    setEditingId(null);
+    setEditing(null);
     setCatName('');
     setCatLimit('');
+    setModalType(isIncomeTab ? 'income' : 'expense');
+    setFormError(null);
     setModalVisible(true);
   };
 
-  const openEditModal = (id: string, name: string, limit: number) => {
-    setEditingId(id);
-    setCatName(name);
-    setCatLimit(limit > 0 ? String(limit) : '');
+  const openEditModal = (cat: CategoryBudget) => {
+    setEditing(cat);
+    setCatName(cat.name);
+    setCatLimit(cat.limit > 0 ? String(cat.limit) : '');
+    setModalType(cat.type);
+    setFormError(null);
     setModalVisible(true);
   };
+
+  const nameTaken = (name: string, type: CategoryType, exceptId?: string) =>
+    [...expenseCategories, ...incomeCategories].some(
+      (c) =>
+        c.type === type &&
+        c.id !== exceptId &&
+        c.name.trim().toLowerCase() === name.toLowerCase()
+    );
 
   const handleSave = () => {
     const trimmed = catName.trim();
-    if (!trimmed) return;
-    const parsedLimit = parseFloat(catLimit) || 0;
-    if (editingId) {
-      updateCategory(editingId, trimmed, parsedLimit);
-    } else {
-      addCategory(trimmed, parsedLimit);
+    if (!trimmed) {
+      setFormError('Give the category a name');
+      return;
     }
+    const type = editing ? editing.type : modalType;
+    if (nameTaken(trimmed, type, editing?.id)) {
+      setFormError(`You already have a ${type} category called ${trimmed}`);
+      return;
+    }
+    const parsedLimit = type === 'expense' ? parseAmount(catLimit) : 0;
+    if (editing) {
+      updateCategory(editing.id, trimmed, parsedLimit);
+      setModalVisible(false);
+      return;
+    }
+    const moved = addCategory(trimmed, parsedLimit, type, {
+      movePastMatches: autoMovePast,
+    });
     setModalVisible(false);
+    setTab(type === 'income' ? 'income' : 'expenses');
+    if (moved > 0) {
+      Alert.alert(
+        'Category created',
+        `Moved ${moved} past ${moved === 1 ? 'entry' : 'entries'} mentioning "${trimmed}" into it.`
+      );
+    }
   };
+
+  const handleDelete = () => {
+    if (!editing) return;
+    Alert.alert(
+      `Delete ${editing.name}?`,
+      editing.count > 0
+        ? `Past entries keep the "${editing.name}" label, but it won't be offered for new ones.`
+        : "It won't be offered for new entries.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteCategory(editing.id);
+            setModalVisible(false);
+          },
+        },
+      ]
+    );
+  };
+
+  const effectiveType = editing ? editing.type : modalType;
 
   return (
     <SafeAreaView className="flex-1 bg-cream">
@@ -116,8 +166,8 @@ export default function CategoriesScreen() {
         <View className="flex-row bg-[#EAE8E1] p-1 rounded-2xl mb-4">
           {(
             [
-              { id: 'expenses', label: 'Expenses' },
-              { id: 'income', label: 'Income' },
+              { id: 'expenses', label: `Expenses · ${expenseCategories.length}` },
+              { id: 'income', label: `Income · ${incomeCategories.length}` },
             ] as { id: CategoryTab; label: string }[]
           ).map((item) => {
             const active = tab === item.id;
@@ -142,104 +192,86 @@ export default function CategoriesScreen() {
         </View>
 
         {/* Categories Card */}
-        <View className="bg-white border border-warm-border rounded-3xl px-4">
-          {tab === 'expenses'
-            ? categories.map((cat, idx) => (
-                <Animated.View
-                  key={cat.id}
-                  entering={FadeInDown.delay(idx * 40).duration(220)}
-                  className={`flex-row items-center justify-between py-3.5 ${
-                    idx < categories.length - 1
-                      ? 'border-b border-warm-border'
-                      : ''
-                  }`}
+        {list.length === 0 ? (
+          <View className="bg-white border border-warm-border rounded-3xl p-6 items-center">
+            <Text className="text-[15px] font-semibold text-charcoal">
+              No {isIncomeTab ? 'income' : 'expense'} categories yet
+            </Text>
+            <Text className="mt-1 text-[13px] text-warm-gray text-center">
+              Tap New to add one.
+            </Text>
+          </View>
+        ) : (
+          <View className="bg-white border border-warm-border rounded-3xl px-4">
+            {list.map((cat, idx) => (
+              <Animated.View
+                key={cat.id}
+                entering={FadeInDown.delay(idx * 40).duration(220)}
+                className={`flex-row items-center justify-between py-3.5 ${
+                  idx < list.length - 1 ? 'border-b border-warm-border' : ''
+                }`}
+              >
+                <Pressable
+                  onPress={() => openEditModal(cat)}
+                  className="flex-row items-center gap-2.5 flex-1 pr-2 active:opacity-70"
                 >
-                  <Pressable
-                    onPress={() => openEditModal(cat.id, cat.name, cat.limit)}
-                    className="flex-row items-center gap-2.5 flex-1 pr-2 active:opacity-70"
+                  <View
+                    className={`w-10 h-10 rounded-xl items-center justify-center ${
+                      isIncomeTab ? 'bg-nox-lime' : 'bg-[#F3F2EC]'
+                    }`}
                   >
-                    <GripVertical size={16} color="#B5B3AA" strokeWidth={2} />
-                    <View className="w-10 h-10 rounded-xl bg-[#F3F2EC] items-center justify-center">
-                      <Text className="text-[14px] font-bold text-charcoal">
-                        {cat.name.charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                    <View className="flex-1">
-                      <Text className="text-[15.5px] font-semibold text-charcoal">
-                        {cat.name}
-                      </Text>
-                      <Text className="text-[12.5px] text-warm-gray mt-0.5">
-                        {cat.limit > 0
-                          ? `Limit ${sym}${cat.limit.toLocaleString('en-US')}`
-                          : 'No limit'}{' '}
-                        · {EXPENSE_COUNTS[cat.name] ?? 0} this month
-                      </Text>
-                    </View>
-                  </Pressable>
+                    <Text className="text-[14px] font-bold text-charcoal">
+                      {cat.name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-[15.5px] font-semibold text-charcoal">
+                      {cat.name}
+                    </Text>
+                    <Text className="text-[12.5px] text-warm-gray mt-0.5">
+                      {isIncomeTab
+                        ? ''
+                        : cat.limit > 0
+                          ? `Limit ${sym}${cat.limit.toLocaleString('en-US')} · `
+                          : 'No limit · '}
+                      {cat.count} this month
+                    </Text>
+                  </View>
+                </Pressable>
 
-                  <View className="flex-row items-center gap-1">
-                    <Pressable
-                      onPress={() => reorderCategory(cat.id, 'up')}
-                      disabled={idx === 0}
-                      className="p-1.5 opacity-70"
-                    >
-                      <ArrowUp
-                        size={14}
-                        color={idx === 0 ? '#D9D7CE' : '#66655E'}
-                      />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => reorderCategory(cat.id, 'down')}
-                      disabled={idx === categories.length - 1}
-                      className="p-1.5 opacity-70"
-                    >
-                      <ArrowDown
-                        size={14}
-                        color={
-                          idx === categories.length - 1 ? '#D9D7CE' : '#66655E'
-                        }
-                      />
-                    </Pressable>
-                    <ChevronRight size={16} color="#8A8880" strokeWidth={2} />
-                  </View>
-                </Animated.View>
-              ))
-            : INCOME_CATEGORIES.map((row, idx) => (
-                <View
-                  key={row.id}
-                  className={`flex-row items-center justify-between py-3.5 ${
-                    idx < INCOME_CATEGORIES.length - 1
-                      ? 'border-b border-warm-border'
-                      : ''
-                  }`}
-                >
-                  <View className="flex-row items-center gap-2.5 flex-1 pr-2">
-                    <GripVertical size={16} color="#B5B3AA" strokeWidth={2} />
-                    <View className="w-10 h-10 rounded-xl bg-nox-lime items-center justify-center">
-                      <Text className="text-[14px] font-bold text-charcoal">
-                        {row.name.charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                    <View className="flex-1">
-                      <Text className="text-[15.5px] font-semibold text-charcoal">
-                        {row.name}
-                      </Text>
-                      <Text className="text-[12.5px] text-warm-gray mt-0.5">
-                        {row.count} this month
-                      </Text>
-                    </View>
-                  </View>
+                <View className="flex-row items-center gap-1">
+                  <Pressable
+                    onPress={() => reorderCategory(cat.id, 'up')}
+                    disabled={idx === 0}
+                    accessibilityLabel={`Move ${cat.name} up`}
+                    className="p-1.5 opacity-70"
+                  >
+                    <ArrowUp size={14} color={idx === 0 ? '#D9D7CE' : '#66655E'} />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => reorderCategory(cat.id, 'down')}
+                    disabled={idx === list.length - 1}
+                    accessibilityLabel={`Move ${cat.name} down`}
+                    className="p-1.5 opacity-70"
+                  >
+                    <ArrowDown
+                      size={14}
+                      color={idx === list.length - 1 ? '#D9D7CE' : '#66655E'}
+                    />
+                  </Pressable>
                   <ChevronRight size={16} color="#8A8880" strokeWidth={2} />
                 </View>
-              ))}
-        </View>
+              </Animated.View>
+            ))}
+          </View>
+        )}
 
         {/* Nox Callout */}
         <View className="mt-4 bg-warm-stone rounded-2xl p-4 flex-row items-center gap-3">
           <NoxMiniIcon size={28} />
           <Text className="flex-1 text-[13px] leading-[18px] text-warm-gray">
-            Nox sorts new entries into these. Rename one and Nox learns the new
-            name. Use arrows to reorder.
+            Tap a category to rename or delete it. Renaming keeps past entries
+            attached. Use the arrows to reorder.
           </Text>
         </View>
       </ScrollView>
@@ -257,10 +289,11 @@ export default function CategoriesScreen() {
 
             <View className="flex-row items-center justify-between mb-5">
               <Text className="text-[20px] font-bold text-charcoal">
-                {editingId ? 'Edit category' : 'New category'}
+                {editing ? 'Edit category' : 'New category'}
               </Text>
               <Pressable
                 onPress={() => setModalVisible(false)}
+                accessibilityLabel="Close"
                 className="w-9 h-9 rounded-xl bg-white border border-warm-border items-center justify-center"
               >
                 <X size={18} color="#141413" />
@@ -274,82 +307,107 @@ export default function CategoriesScreen() {
                 </Text>
               </View>
               <View className="flex-1">
-                <Text className="text-[12px] font-medium text-warm-gray mb-1">
-                  Name
-                </Text>
+                <Text className="text-[12px] font-medium text-warm-gray mb-1">Name</Text>
                 <TextInput
                   value={catName}
-                  onChangeText={setCatName}
-                  placeholder="Coffee"
+                  onChangeText={(v) => {
+                    setCatName(v);
+                    setFormError(null);
+                  }}
+                  placeholder={effectiveType === 'income' ? 'Freelance' : 'Coffee'}
                   placeholderTextColor="#8A8880"
                   className="bg-white border-[1.5px] border-charcoal rounded-2xl px-4 h-11 text-[15px] font-medium text-charcoal"
                 />
               </View>
             </View>
 
-            {/* Expense / Income Toggle */}
-            <View className="flex-row bg-[#EAE8E1] p-1 rounded-2xl mb-4">
-              {(['expense', 'income'] as const).map((t) => {
-                const active = modalType === t;
-                return (
-                  <Pressable
-                    key={t}
-                    onPress={() => setModalType(t)}
-                    className={`flex-1 py-2.5 rounded-xl items-center ${
-                      active ? 'bg-white' : 'bg-transparent'
-                    }`}
-                  >
-                    <Text
-                      className={`text-[14px] font-semibold capitalize ${
-                        active ? 'text-charcoal' : 'text-warm-gray'
+            {/* Expense / Income Toggle (type is fixed once created) */}
+            {!editing ? (
+              <View className="flex-row bg-[#EAE8E1] p-1 rounded-2xl mb-4">
+                {(['expense', 'income'] as const).map((t) => {
+                  const active = modalType === t;
+                  return (
+                    <Pressable
+                      key={t}
+                      onPress={() => setModalType(t)}
+                      className={`flex-1 py-2.5 rounded-xl items-center ${
+                        active ? 'bg-white' : 'bg-transparent'
                       }`}
                     >
-                      {t}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+                      <Text
+                        className={`text-[14px] font-semibold capitalize ${
+                          active ? 'text-charcoal' : 'text-warm-gray'
+                        }`}
+                      >
+                        {t}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
 
-            <Text className="text-[12.5px] font-medium text-warm-gray mb-1.5">
-              Monthly limit (optional)
-            </Text>
-            <View className="flex-row items-center bg-white border border-warm-border rounded-2xl px-4 h-12 mb-4">
-              <Text className="text-[16px] font-bold text-charcoal mr-1">
-                {sym}
-              </Text>
-              <TextInput
-                value={catLimit}
-                onChangeText={setCatLimit}
-                keyboardType="numeric"
-                placeholder="800"
-                placeholderTextColor="#8A8880"
-                className="flex-1 text-[16px] font-semibold text-charcoal"
-              />
-            </View>
+            {effectiveType === 'expense' ? (
+              <>
+                <Text className="text-[12.5px] font-medium text-warm-gray mb-1.5">
+                  Monthly limit (optional)
+                </Text>
+                <View className="flex-row items-center bg-white border border-warm-border rounded-2xl px-4 h-12 mb-4">
+                  <Text className="text-[16px] font-bold text-charcoal mr-1">{sym}</Text>
+                  <TextInput
+                    value={catLimit}
+                    onChangeText={setCatLimit}
+                    keyboardType="numeric"
+                    placeholder="800"
+                    placeholderTextColor="#8A8880"
+                    className="flex-1 text-[16px] font-semibold text-charcoal"
+                  />
+                </View>
+              </>
+            ) : null}
 
-            <View className="bg-white border border-warm-border rounded-2xl p-3.5 flex-row items-center gap-3 mb-5">
-              <NoxMiniIcon size={26} />
-              <Text className="flex-1 text-[13px] leading-[18px] text-charcoal">
-                Move past expenses that look like{' '}
-                {(catName.trim() || 'this').toLowerCase()} into it
+            {!editing ? (
+              <View className="bg-white border border-warm-border rounded-2xl p-3.5 flex-row items-center gap-3 mb-4">
+                <NoxMiniIcon size={26} />
+                <Text className="flex-1 text-[13px] leading-[18px] text-charcoal">
+                  Move past entries that mention &quot;
+                  {(catName.trim() || 'this').toLowerCase()}&quot; into it
+                </Text>
+                <Switch
+                  value={autoMovePast}
+                  onValueChange={setAutoMovePast}
+                  trackColor={{ false: '#D9D7CE', true: '#141413' }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+            ) : null}
+
+            {formError ? (
+              <Text className="mb-3 text-[13px] font-semibold text-[#B85318]">
+                {formError}
               </Text>
-              <Switch
-                value={autoMovePast}
-                onValueChange={setAutoMovePast}
-                trackColor={{ false: '#D9D7CE', true: '#141413' }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
+            ) : null}
 
             <Pressable
               onPress={handleSave}
               className="bg-charcoal rounded-full h-[52px] items-center justify-center active:opacity-85"
             >
               <Text className="text-white text-[15.5px] font-semibold">
-                {editingId ? 'Save changes' : 'Create category'}
+                {editing ? 'Save changes' : 'Create category'}
               </Text>
             </Pressable>
+
+            {editing ? (
+              <Pressable
+                onPress={handleDelete}
+                className="mt-3 h-12 flex-row items-center justify-center gap-2 active:opacity-70"
+              >
+                <Trash2 size={16} color="#B85318" strokeWidth={2} />
+                <Text className="text-[15px] font-semibold text-[#B85318]">
+                  Delete category
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
       </Modal>

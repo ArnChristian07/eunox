@@ -4,12 +4,15 @@ import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 
+import { AnimatedSplash } from '@/components/AnimatedSplash';
+import { LockOverlay } from '@/components/LockOverlay';
 import { useColorScheme } from '@/components/useColorScheme';
-import { BudgetProvider } from '@/context/BudgetContext';
-import { OnboardingProvider } from '@/context/OnboardingContext';
+import { BudgetProvider, useBudget } from '@/context/BudgetContext';
+import { LockProvider, useLock } from '@/context/LockContext';
+import { OnboardingProvider, useOnboarding } from '@/context/OnboardingContext';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -34,25 +37,39 @@ export default function RootLayout() {
     if (error) throw error;
   }, [error]);
 
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
-
   if (!loaded) {
     return null;
   }
 
-  return <RootLayoutNav />;
+  return (
+    <OnboardingProvider>
+      <BudgetProvider>
+        <LockProvider>
+          <RootLayoutNav />
+        </LockProvider>
+      </BudgetProvider>
+    </OnboardingProvider>
+  );
 }
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+  const { hydrated: onboardingHydrated, hasCompletedOnboarding } = useOnboarding();
+  const { hydrated: budgetHydrated } = useBudget();
+  const lock = useLock();
+  const ready = onboardingHydrated && budgetHydrated && lock.ready;
+  const [showSplash, setShowSplash] = useState(true);
+
+  // Keep the splash screen up until saved data is loaded, so Home doesn't
+  // flash the onboarding redirect for returning users.
+  useEffect(() => {
+    if (ready) SplashScreen.hideAsync();
+  }, [ready]);
+
+  if (!ready) return null;
 
   return (
-    <OnboardingProvider>
-      <BudgetProvider>
+    <>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <StatusBar style="dark" />
           <Stack screenOptions={{ headerShown: false }}>
@@ -76,14 +93,14 @@ function RootLayoutNav() {
               name="scan-receipt"
               options={{ presentation: 'fullScreenModal', headerShown: false }}
             />
-            <Stack.Screen
-              name="lock"
-              options={{ presentation: 'fullScreenModal', headerShown: false }}
-            />
+            <Stack.Screen name="lock" options={{ headerShown: false }} />
             <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
           </Stack>
         </ThemeProvider>
-      </BudgetProvider>
-    </OnboardingProvider>
+        {lock.locked && hasCompletedOnboarding ? <LockOverlay /> : null}
+        {showSplash ? (
+          <AnimatedSplash onFinish={() => setShowSplash(false)} />
+        ) : null}
+    </>
   );
 }

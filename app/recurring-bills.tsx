@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -10,27 +11,81 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { router } from 'expo-router';
-import { Bell, Check, ChevronLeft, Plus, X } from 'lucide-react-native';
+import { CalendarClock, Check, ChevronLeft, Info, Plus, Trash2, X } from 'lucide-react-native';
 import {
   describeBillDue,
   getBillStatus,
+  RecurringBill,
   useBudget,
 } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
 import { monthShort } from '@/lib/dates';
+import { parseAmount } from '@/lib/format';
 
 export default function RecurringBillsScreen() {
   const { selectedCurrency } = useOnboarding();
-  const { today, bills, addBill, markBillPaid } = useBudget();
+  const {
+    today,
+    bills,
+    wallets,
+    defaultWallet,
+    addBill,
+    updateBill,
+    deleteBill,
+    markBillPaid,
+  } = useBudget();
   const sym = selectedCurrency.symbol;
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editing, setEditing] = useState<RecurringBill | null>(null);
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
-  const [day, setDay] = useState('30');
-  const [wallet, setWallet] = useState('E-wallet');
+  const [day, setDay] = useState('');
+  const [wallet, setWallet] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
-  const statuses = bills.map((bill) => getBillStatus(bill, today));
+  const openNew = () => {
+    setEditing(null);
+    setTitle('');
+    setAmount('');
+    setDay(String(today.getDate()));
+    setWallet(defaultWallet?.name ?? wallets[0]?.name ?? '');
+    setError(null);
+    setShowAddModal(true);
+  };
+
+  const openEdit = (bill: RecurringBill) => {
+    setEditing(bill);
+    setTitle(bill.title);
+    setAmount(String(bill.amount));
+    setDay(String(bill.dueDay));
+    setWallet(bill.wallet);
+    setError(null);
+    setShowAddModal(true);
+  };
+
+  const handleDelete = () => {
+    if (!editing) return;
+    Alert.alert(
+      `Delete ${editing.title}?`,
+      'Payments you already marked stay in your transactions.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteBill(editing.id);
+            setShowAddModal(false);
+          },
+        },
+      ]
+    );
+  };
+
+  const statuses = bills
+    .map((bill) => getBillStatus(bill, today))
+    .sort((a, b) => Number(a.paid) - Number(b.paid) || a.daysUntilDue - b.daysUntilDue);
   const paidTotal = statuses
     .filter((s) => s.paid)
     .reduce((sum, s) => sum + s.bill.amount, 0);
@@ -40,19 +95,17 @@ export default function RecurringBillsScreen() {
   const paidPct =
     totalThisMonth > 0 ? Math.round((paidTotal / totalThisMonth) * 100) : 0;
 
-  const handleAddBill = () => {
+  const handleSaveBill = () => {
     const trimmed = title.trim();
-    const amt = parseFloat(amount) || 0;
-    const dueDay = Math.min(31, Math.max(1, parseInt(day, 10) || 1));
-    if (!trimmed || amt <= 0) return;
-    addBill({
-      title: trimmed,
-      wallet,
-      amount: amt,
-      dueDay,
-    });
-    setTitle('');
-    setAmount('');
+    const amt = parseAmount(amount);
+    const parsedDay = parseInt(day, 10);
+    if (!trimmed) return setError('Give the bill a name');
+    if (amt <= 0) return setError('Enter the amount');
+    if (!(parsedDay >= 1 && parsedDay <= 31)) return setError('Due day must be 1 to 31');
+    if (!wallet) return setError('Pick a wallet');
+    const data = { title: trimmed, wallet, amount: amt, dueDay: parsedDay };
+    if (editing) updateBill(editing.id, data);
+    else addBill(data);
     setShowAddModal(false);
   };
 
@@ -78,7 +131,8 @@ export default function RecurringBillsScreen() {
             </View>
 
             <Pressable
-              onPress={() => setShowAddModal(true)}
+              onPress={openNew}
+              accessibilityLabel="Add bill"
               className="w-11 h-11 rounded-2xl bg-charcoal items-center justify-center active:opacity-85"
             >
               <Plus size={20} color="#FFFFFF" strokeWidth={2.2} />
@@ -122,13 +176,34 @@ export default function RecurringBillsScreen() {
           <Text className="mt-5 mb-2.5 px-1 text-[13px] font-medium text-warm-gray">
             This month
           </Text>
+          {statuses.length === 0 ? (
+            <View className="bg-white border border-warm-border rounded-3xl p-6 items-center">
+              <View className="w-12 h-12 rounded-2xl bg-[#F3F2EC] items-center justify-center">
+                <CalendarClock size={22} color="#141413" strokeWidth={1.9} />
+              </View>
+              <Text className="mt-3 text-[16px] font-bold text-charcoal">
+                No recurring bills yet
+              </Text>
+              <Text className="mt-1 text-[13px] leading-[18px] text-warm-gray text-center">
+                Add rent, internet, phone or subscriptions to see what&apos;s
+                still due each month.
+              </Text>
+              <Pressable
+                onPress={openNew}
+                className="mt-4 bg-charcoal rounded-full px-5 h-11 items-center justify-center active:opacity-85"
+              >
+                <Text className="text-white text-[14px] font-semibold">Add a bill</Text>
+              </Pressable>
+            </View>
+          ) : (
           <View className="bg-white border border-warm-border rounded-3xl px-4">
             {statuses.map((status, idx) => {
               const { bill, dueDate, paid } = status;
               return (
-                <View
+                <Pressable
                   key={bill.id}
-                  className={`flex-row items-center justify-between py-3.5 ${
+                  onPress={() => openEdit(bill)}
+                  className={`flex-row items-center justify-between py-3.5 active:opacity-80 ${
                     idx < statuses.length - 1
                       ? 'border-b border-warm-border'
                       : ''
@@ -183,17 +258,19 @@ export default function RecurringBillsScreen() {
                       </Pressable>
                     )}
                   </View>
-                </View>
+                </Pressable>
               );
             })}
           </View>
+          )}
         </ScrollView>
 
-        {/* Bottom Reminder Note */}
-        <View className="flex-row items-center gap-2.5 pt-4">
-          <Bell size={16} color="#8A8880" strokeWidth={2} />
-          <Text className="flex-1 text-[12.5px] text-warm-gray">
-            Reminders come 2 days before, even with no signal.
+        {/* Bottom Note */}
+        <View className="flex-row items-start gap-2.5 pt-4">
+          <Info size={16} color="#8A8880" strokeWidth={2} />
+          <Text className="flex-1 text-[12.5px] leading-[18px] text-warm-gray">
+            Mark paid records the bill as an expense from its wallet. Tap a bill
+            to edit or delete it.
           </Text>
         </View>
       </View>
@@ -209,7 +286,7 @@ export default function RecurringBillsScreen() {
           <View className="bg-cream rounded-t-3xl p-6 pb-8">
             <View className="flex-row items-center justify-between mb-4">
               <Text className="text-[18px] font-bold text-charcoal">
-                New recurring bill
+                {editing ? 'Edit bill' : 'New recurring bill'}
               </Text>
               <Pressable onPress={() => setShowAddModal(false)}>
                 <X size={20} color="#141413" />
@@ -242,36 +319,59 @@ export default function RecurringBillsScreen() {
               />
             </View>
 
-            <View className="flex-row gap-2 mb-5">
-              {['Cash wallet', 'E-wallet', 'Bank savings'].map((w) => (
-                <Pressable
-                  key={w}
-                  onPress={() => setWallet(w)}
-                  className={`flex-1 py-2.5 rounded-xl items-center border ${
-                    wallet === w
-                      ? 'bg-charcoal border-charcoal'
-                      : 'bg-white border-warm-border'
-                  }`}
-                >
-                  <Text
-                    className={`text-[12px] font-semibold ${
-                      wallet === w ? 'text-white' : 'text-charcoal'
+            <Text className="text-[12.5px] font-medium text-warm-gray mb-1.5">
+              Paid from
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 8 }}
+              className="mb-4 flex-grow-0"
+            >
+              {wallets.map((w) => {
+                const active = wallet === w.name;
+                return (
+                  <Pressable
+                    key={w.id}
+                    onPress={() => setWallet(w.name)}
+                    className={`px-4 py-2.5 rounded-xl items-center border ${
+                      active ? 'bg-charcoal border-charcoal' : 'bg-white border-warm-border'
                     }`}
                   >
-                    {w}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+                    <Text
+                      className={`text-[12.5px] font-semibold ${
+                        active ? 'text-white' : 'text-charcoal'
+                      }`}
+                    >
+                      {w.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            {error ? (
+              <Text className="mb-3 text-[13px] font-semibold text-[#B85318]">{error}</Text>
+            ) : null}
 
             <Pressable
-              onPress={handleAddBill}
+              onPress={handleSaveBill}
               className="bg-charcoal rounded-full h-12 items-center justify-center active:opacity-85"
             >
               <Text className="text-white text-[15px] font-semibold">
-                Save bill
+                {editing ? 'Save changes' : 'Save bill'}
               </Text>
             </Pressable>
+
+            {editing ? (
+              <Pressable
+                onPress={handleDelete}
+                className="mt-3 h-11 flex-row items-center justify-center gap-2 active:opacity-70"
+              >
+                <Trash2 size={16} color="#B85318" strokeWidth={2} />
+                <Text className="text-[15px] font-semibold text-[#B85318]">Delete bill</Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
       </Modal>

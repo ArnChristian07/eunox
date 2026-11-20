@@ -1,26 +1,57 @@
-import React, { useState } from 'react';
-import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import React from 'react';
+import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Href, router } from 'expo-router';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
-import { useBudget } from '@/context/BudgetContext';
+import { getBillStatus, useBudget } from '@/context/BudgetContext';
+import { useLock } from '@/context/LockContext';
 import { useOnboarding } from '@/context/OnboardingContext';
-
-const THEME_OPTIONS = ['Match phone', 'Light', 'Dark'];
+import { formatTimeAgo } from '@/lib/dates';
 
 export default function SettingsScreen() {
   const { selectedCurrency, monthStart } = useOnboarding();
-  const [themeIdx, setThemeIdx] = useState(0);
+  const lock = useLock();
   const {
+    today,
     wallets,
     categories,
-    appLockEnabled,
-    setAppLockEnabled,
+    goals,
+    bills,
+    lastBackup,
     hideAmountsOnHome,
     setHideAmountsOnHome,
     noxSuggestionsEnabled,
     setNoxSuggestionsEnabled,
   } = useBudget();
+
+  const billsDue = bills.filter((b) => !getBillStatus(b, today).paid).length;
+  const billsLabel =
+    bills.length === 0 ? 'None' : billsDue === 0 ? 'All paid' : `${billsDue} due`;
+
+  const handleLockToggle = (value: boolean) => {
+    if (value) {
+      router.push('/lock');
+      return;
+    }
+    Alert.alert('Turn off app lock?', 'Anyone with your phone can open Eunox.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Turn off',
+        style: 'destructive',
+        onPress: () => {
+          lock.disableLock().catch(() =>
+            Alert.alert("Couldn't turn off app lock", 'Please try again.')
+          );
+        },
+      },
+    ]);
+  };
+
+  const lockSubtitle = !lock.supported
+    ? 'Not available on this device'
+    : lock.enabled
+      ? `On · ${lock.biometricsAvailable ? 'fingerprint or PIN' : 'PIN'} · tap to change PIN`
+      : 'Fingerprint or PIN to open';
 
   return (
     <SafeAreaView className="flex-1 bg-cream">
@@ -87,7 +118,7 @@ export default function SettingsScreen() {
             </Text>
             <View className="flex-row items-center gap-1.5">
               <Text className="text-[14.5px] text-warm-gray">
-                {categories.length + 1}
+                {categories.length}
               </Text>
               <ChevronRight size={16} color="#8A8880" strokeWidth={2} />
             </View>
@@ -101,7 +132,7 @@ export default function SettingsScreen() {
               Recurring bills
             </Text>
             <View className="flex-row items-center gap-1.5">
-              <Text className="text-[14.5px] text-warm-gray">2 due</Text>
+              <Text className="text-[14.5px] text-warm-gray">{billsLabel}</Text>
               <ChevronRight size={16} color="#8A8880" strokeWidth={2} />
             </View>
           </Pressable>
@@ -114,7 +145,7 @@ export default function SettingsScreen() {
               Savings goals
             </Text>
             <View className="flex-row items-center gap-1.5">
-              <Text className="text-[14.5px] text-warm-gray">3</Text>
+              <Text className="text-[14.5px] text-warm-gray">{goals.length}</Text>
               <ChevronRight size={16} color="#8A8880" strokeWidth={2} />
             </View>
           </Pressable>
@@ -141,7 +172,8 @@ export default function SettingsScreen() {
         </Text>
         <View className="bg-white border border-warm-border rounded-3xl px-4">
           <Pressable
-            onPress={() => router.push('/lock')}
+            onPress={() => lock.enabled && router.push('/lock')}
+            disabled={!lock.supported}
             className="flex-row items-center justify-between py-3.5 border-b border-warm-border"
           >
             <View className="flex-1 pr-3">
@@ -149,12 +181,13 @@ export default function SettingsScreen() {
                 App lock
               </Text>
               <Text className="text-[12.5px] text-warm-gray mt-0.5">
-                Fingerprint or PIN to open
+                {lockSubtitle}
               </Text>
             </View>
             <Switch
-              value={appLockEnabled}
-              onValueChange={setAppLockEnabled}
+              value={lock.enabled}
+              onValueChange={handleLockToggle}
+              disabled={!lock.supported}
               trackColor={{ false: '#D9D7CE', true: '#141413' }}
               thumbColor="#FFFFFF"
             />
@@ -186,7 +219,9 @@ export default function SettingsScreen() {
                 Backup and restore
               </Text>
               <Text className="text-[12.5px] text-warm-gray mt-0.5">
-                Last backup 3 days ago
+                {lastBackup
+                  ? `Last backup ${formatTimeAgo(lastBackup.at)}`
+                  : 'No backup yet'}
               </Text>
             </View>
             <ChevronRight size={16} color="#8A8880" strokeWidth={2} />
@@ -195,10 +230,10 @@ export default function SettingsScreen() {
 
         {/* Nox and Display */}
         <Text className="text-[13px] font-medium text-warm-gray mt-5 mb-2 px-1">
-          Nox and display
+          Nox
         </Text>
         <View className="bg-white border border-warm-border rounded-3xl px-4">
-          <View className="flex-row items-center justify-between py-3.5 border-b border-warm-border">
+          <View className="flex-row items-center justify-between py-3.5">
             <View className="flex-1 pr-3">
               <Text className="text-[15px] font-medium text-charcoal">
                 Nox suggestions
@@ -215,18 +250,6 @@ export default function SettingsScreen() {
             />
           </View>
 
-          <Pressable
-            onPress={() => setThemeIdx((prev) => (prev + 1) % THEME_OPTIONS.length)}
-            className="flex-row items-center justify-between py-4 active:opacity-70"
-          >
-            <Text className="text-[15px] font-medium text-charcoal">Theme</Text>
-            <View className="flex-row items-center gap-1.5">
-              <Text className="text-[14.5px] text-warm-gray">
-                {THEME_OPTIONS[themeIdx]}
-              </Text>
-              <ChevronRight size={16} color="#8A8880" strokeWidth={2} />
-            </View>
-          </Pressable>
         </View>
 
         <Text className="mt-6 text-center text-[12.5px] text-warm-gray">

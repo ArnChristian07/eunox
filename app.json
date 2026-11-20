@@ -32,11 +32,17 @@
         {
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#141413"
         }
       ],
       "expo-localization",
       "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Eunox uses Face ID to unlock the app."
+        }
+      ],
       "expo-sharing"
     ],
     "experiments": {

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -19,11 +20,14 @@ import {
   Landmark,
   Plus,
   Smartphone,
+  Star,
+  Trash2,
   X,
 } from 'lucide-react-native';
-import { useBudget, WalletItem } from '@/context/BudgetContext';
+import { TransferRecord, useBudget, WalletItem } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
 import { formatShortDate, parseISODate } from '@/lib/dates';
+import { formatMoney, parseAmount } from '@/lib/format';
 
 function getWalletIcon(type: WalletItem['iconType']) {
   switch (type) {
@@ -38,20 +42,32 @@ function getWalletIcon(type: WalletItem['iconType']) {
 
 export default function WalletsScreen() {
   const { selectedCurrency } = useOnboarding();
-  const { today, wallets, transfers, addWallet, transferBetweenWallets } =
-    useBudget();
+  const {
+    today,
+    wallets,
+    transfers,
+    addWallet,
+    updateWallet,
+    setDefaultWallet,
+    deleteWallet,
+    transferBetweenWallets,
+    deleteTransfer,
+  } = useBudget();
   const sym = selectedCurrency.symbol;
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingWallet, setEditingWallet] = useState<WalletItem | null>(null);
   const [newName, setNewName] = useState('');
   const [newSubtitle, setNewSubtitle] = useState('');
   const [newBalance, setNewBalance] = useState('');
   const [newType, setNewType] = useState<WalletItem['iconType']>('ewallet');
+  const [walletError, setWalletError] = useState<string | null>(null);
 
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [fromId, setFromId] = useState(wallets[0]?.id ?? '');
   const [toId, setToId] = useState(wallets[1]?.id ?? '');
-  const [transferAmount, setTransferAmount] = useState('1000');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferError, setTransferError] = useState<string | null>(null);
 
   const fromWallet = wallets.find((w) => w.id === fromId) ?? wallets[0];
   const toWallet = wallets.find((w) => w.id === toId) ?? wallets[1] ?? wallets[0];
@@ -71,27 +87,87 @@ export default function WalletsScreen() {
   const totalBalance = wallets.reduce((sum, w) => sum + w.balance, 0);
   const [whole, dec] = totalBalance.toFixed(2).split('.');
 
-  const handleCreateWallet = () => {
-    const trimmed = newName.trim();
-    if (!trimmed) return;
-    addWallet({
-      name: trimmed,
-      subtitle: newSubtitle.trim() || 'Local wallet',
-      initialBalance: parseFloat(newBalance) || 0,
-      iconType: newType,
-    });
+  const openAddWallet = () => {
+    setEditingWallet(null);
     setNewName('');
     setNewSubtitle('');
     setNewBalance('');
+    setNewType('ewallet');
+    setWalletError(null);
+    setShowAddModal(true);
+  };
+
+  const openEditWallet = (w: WalletItem) => {
+    setEditingWallet(w);
+    setNewName(w.name);
+    setNewSubtitle(w.subtitle);
+    setNewType(w.iconType);
+    setWalletError(null);
+    setShowAddModal(true);
+  };
+
+  const handleSaveWallet = () => {
+    const trimmed = newName.trim();
+    if (!trimmed) return setWalletError('Give the wallet a name');
+    const taken = wallets.some(
+      (w) =>
+        w.id !== editingWallet?.id && w.name.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (taken) return setWalletError(`You already have a wallet called ${trimmed}`);
+    if (editingWallet) {
+      updateWallet(editingWallet.id, {
+        name: trimmed,
+        subtitle: newSubtitle.trim() || 'Local wallet',
+        iconType: newType,
+      });
+    } else {
+      addWallet({
+        name: trimmed,
+        subtitle: newSubtitle.trim() || 'Local wallet',
+        initialBalance: parseAmount(newBalance),
+        iconType: newType,
+      });
+    }
     setShowAddModal(false);
   };
 
+  const handleDeleteWallet = () => {
+    if (!editingWallet) return;
+    const target = editingWallet;
+    Alert.alert(`Delete ${target.name}?`, 'This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          const problem = deleteWallet(target.id);
+          if (problem) setWalletError(problem);
+          else setShowAddModal(false);
+        },
+      },
+    ]);
+  };
+
   const handleTransfer = () => {
-    const amt = parseFloat(transferAmount) || 0;
-    if (amt <= 0 || !fromId || !toId || fromId === toId) return;
+    const amt = parseAmount(transferAmount);
+    if (!fromId || !toId || fromId === toId) {
+      return setTransferError('Pick two different wallets');
+    }
+    if (amt <= 0) return setTransferError('Enter an amount');
     transferBetweenWallets(fromId, toId, amt);
     setTransferAmount('');
     setShowTransferModal(false);
+  };
+
+  const confirmDeleteTransfer = (tr: TransferRecord) => {
+    Alert.alert(
+      'Undo this transfer?',
+      `${formatMoney(tr.amount, sym)} goes back from ${tr.to} to ${tr.from}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Undo transfer', style: 'destructive', onPress: () => deleteTransfer(tr.id) },
+      ]
+    );
   };
 
   return (
@@ -130,8 +206,14 @@ export default function WalletsScreen() {
           <View className="flex-row gap-3 mt-4 mb-5">
             <Pressable
               onPress={() => {
-                setFromId(wallets[0]?.id ?? '');
-                setToId(wallets[1]?.id ?? wallets[0]?.id ?? '');
+                if (wallets.length < 2) {
+                  Alert.alert('Add another wallet', 'Transfers need at least two wallets.');
+                  return;
+                }
+                setFromId(wallets[0].id);
+                setToId(wallets[1].id);
+                setTransferAmount('');
+                setTransferError(null);
                 setShowTransferModal(true);
               }}
               className="flex-1 bg-charcoal rounded-2xl h-12 flex-row items-center justify-center gap-2 active:opacity-85"
@@ -143,7 +225,7 @@ export default function WalletsScreen() {
             </Pressable>
 
             <Pressable
-              onPress={() => setShowAddModal(true)}
+              onPress={openAddWallet}
               className="flex-1 bg-white border border-warm-border rounded-2xl h-12 flex-row items-center justify-center gap-1.5 active:opacity-75"
             >
               <Plus size={16} color="#141413" strokeWidth={2.2} />
@@ -161,7 +243,10 @@ export default function WalletsScreen() {
                 <Animated.View
                   key={w.id}
                   entering={FadeInDown.delay(idx * 60).duration(280)}
-                  className="bg-white border border-warm-border rounded-3xl p-4 flex-row items-center justify-between"
+                >
+                <Pressable
+                  onPress={() => openEditWallet(w)}
+                  className="bg-white border border-warm-border rounded-3xl p-4 flex-row items-center justify-between active:opacity-85"
                 >
                   <View className="flex-row items-center gap-3.5 flex-1 pr-2">
                     <View
@@ -177,18 +262,20 @@ export default function WalletsScreen() {
                         {w.name}
                       </Text>
                       <Text className="text-[12.5px] text-warm-gray mt-0.5">
+                        {w.isDefault ? 'Default · ' : ''}
                         {w.subtitle}
                       </Text>
                     </View>
                   </View>
 
-                  <Text className="text-[15.5px] font-bold text-charcoal">
-                    {sym}
-                    {w.balance.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                  <Text
+                    className={`text-[15.5px] font-bold ${
+                      w.balance < 0 ? 'text-[#B85318]' : 'text-charcoal'
+                    }`}
+                  >
+                    {formatMoney(w.balance, sym)}
                   </Text>
+                </Pressable>
                 </Animated.View>
               );
             })}
@@ -198,11 +285,18 @@ export default function WalletsScreen() {
           <Text className="mt-6 mb-3 text-[16px] font-bold text-charcoal">
             Recent transfers
           </Text>
+          {transfers.length === 0 ? (
+            <Text className="text-[13px] text-warm-gray">
+              No transfers yet. Use Transfer to move money between wallets.
+            </Text>
+          ) : null}
           <View className="gap-3">
-            {transfers.map((tr) => (
-              <View
+            {transfers.slice(0, 20).map((tr) => (
+              <Pressable
                 key={tr.id}
-                className="flex-row items-center justify-between"
+                onPress={() => confirmDeleteTransfer(tr)}
+                accessibilityHint="Undo this transfer"
+                className="flex-row items-center justify-between active:opacity-70"
               >
                 <View>
                   <Text className="text-[14.5px] font-semibold text-charcoal">
@@ -219,7 +313,7 @@ export default function WalletsScreen() {
                     maximumFractionDigits: 2,
                   })}
                 </Text>
-              </View>
+              </Pressable>
             ))}
           </View>
         </ScrollView>
@@ -245,7 +339,7 @@ export default function WalletsScreen() {
           <View className="bg-cream rounded-t-3xl p-6 pb-8">
             <View className="flex-row items-center justify-between mb-4">
               <Text className="text-[18px] font-bold text-charcoal">
-                Add wallet
+                {editingWallet ? 'Edit wallet' : 'Add wallet'}
               </Text>
               <Pressable onPress={() => setShowAddModal(false)}>
                 <X size={20} color="#141413" />
@@ -254,7 +348,10 @@ export default function WalletsScreen() {
 
             <TextInput
               value={newName}
-              onChangeText={setNewName}
+              onChangeText={(v) => {
+                setNewName(v);
+                setWalletError(null);
+              }}
               placeholder="Wallet name (e.g. Travel fund)"
               placeholderTextColor="#8A8880"
               className="bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-3"
@@ -266,14 +363,17 @@ export default function WalletsScreen() {
               placeholderTextColor="#8A8880"
               className="bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-3"
             />
-            <TextInput
-              value={newBalance}
-              onChangeText={setNewBalance}
-              keyboardType="numeric"
-              placeholder={`Starting balance (${sym}0)`}
-              placeholderTextColor="#8A8880"
-              className="bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-4"
-            />
+            {editingWallet ? null : (
+              <TextInput
+                value={newBalance}
+                onChangeText={setNewBalance}
+                keyboardType="numeric"
+                placeholder={`Starting balance (${sym}0)`}
+                placeholderTextColor="#8A8880"
+                className="bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-4"
+              />
+            )}
+            {editingWallet ? <View className="h-1" /> : null}
 
             <View className="flex-row gap-2 mb-5">
               {(['cash', 'ewallet', 'bank'] as const).map((t) => (
@@ -297,14 +397,44 @@ export default function WalletsScreen() {
               ))}
             </View>
 
+            {walletError ? (
+              <Text className="mb-3 text-[13px] font-semibold text-[#B85318]">
+                {walletError}
+              </Text>
+            ) : null}
+
             <Pressable
-              onPress={handleCreateWallet}
+              onPress={handleSaveWallet}
               className="bg-charcoal rounded-full h-12 items-center justify-center active:opacity-85"
             >
               <Text className="text-white text-[15px] font-semibold">
-                Create wallet
+                {editingWallet ? 'Save changes' : 'Create wallet'}
               </Text>
             </Pressable>
+
+            {editingWallet ? (
+              <View className="flex-row gap-3 mt-3">
+                {!editingWallet.isDefault ? (
+                  <Pressable
+                    onPress={() => {
+                      setDefaultWallet(editingWallet.id);
+                      setShowAddModal(false);
+                    }}
+                    className="flex-1 h-11 rounded-full bg-white border border-warm-border flex-row items-center justify-center gap-1.5 active:opacity-75"
+                  >
+                    <Star size={15} color="#141413" strokeWidth={2} />
+                    <Text className="text-[14px] font-semibold text-charcoal">Make default</Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  onPress={handleDeleteWallet}
+                  className="flex-1 h-11 rounded-full flex-row items-center justify-center gap-1.5 active:opacity-70"
+                >
+                  <Trash2 size={15} color="#B85318" strokeWidth={2} />
+                  <Text className="text-[14px] font-semibold text-[#B85318]">Delete</Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
         </View>
       </Modal>
@@ -436,9 +566,13 @@ export default function WalletsScreen() {
               </Pressable>
             </View>
 
-            <Text className="mt-4 mb-4 text-center text-[12px] text-warm-gray">
-              Transfers move money between wallets. They don&apos;t count as
-              spending.
+            <Text
+              className={`mt-4 mb-4 text-center text-[12px] ${
+                transferError ? 'text-[#B85318] font-semibold' : 'text-warm-gray'
+              }`}
+            >
+              {transferError ??
+                "Transfers move money between wallets. They don't count as spending."}
             </Text>
 
             <Pressable

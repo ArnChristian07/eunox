@@ -20,6 +20,7 @@ import {
   startOfDay,
   toISODate,
 } from '@/lib/dates';
+import { loadJSON, removeKeys, saveJSON, STORAGE_KEYS } from '@/lib/storage';
 
 export type TransactionType = 'expense' | 'income' | 'transfer';
 export type CategoryType = 'expense' | 'income';
@@ -140,7 +141,16 @@ export function describeBillDue(status: BillStatus): string {
   return `Due in ${d} days`;
 }
 
+interface PersistedBudget extends BudgetSnapshot {
+  seeded: boolean;
+  lastBackup: BackupInfo | null;
+  hideAmountsOnHome: boolean;
+  noxSuggestionsEnabled: boolean;
+}
+
 interface BudgetContextValue {
+  /** False until saved data has been read from storage. */
+  hydrated: boolean;
   today: Date;
   period: BudgetPeriod;
   previousPeriod: BudgetPeriod;
@@ -168,24 +178,51 @@ interface BudgetContextValue {
   deleteTransaction: (id: string) => void;
   moveBudget: (fromName: string, toName: string, amount: number) => void;
   raiseCategoryLimit: (categoryName: string, newLimit: number) => void;
-  addCategory: (name: string, limit: number, type?: CategoryType) => void;
+  /**
+   * Adds a category. With `movePastMatches`, past entries of the same type whose
+   * title or note mentions the name are moved into it. Returns how many moved,
+   * or -1 when the name is empty or already taken.
+   */
+  addCategory: (
+    name: string,
+    limit: number,
+    type?: CategoryType,
+    options?: { movePastMatches?: boolean }
+  ) => number;
   updateCategory: (id: string, name: string, limit: number) => void;
+  deleteCategory: (id: string) => void;
   reorderCategory: (id: string, direction: 'up' | 'down') => void;
   addWallet: (wallet: Omit<WalletRecord, 'id'>) => void;
+  updateWallet: (
+    id: string,
+    updates: Partial<Pick<WalletRecord, 'name' | 'subtitle' | 'iconType'>>
+  ) => void;
+  setDefaultWallet: (id: string) => void;
+  /** Returns an error message when the wallet cannot be deleted. */
+  deleteWallet: (id: string) => string | null;
   transferBetweenWallets: (fromId: string, toId: string, amount: number) => void;
+  deleteTransfer: (id: string) => void;
   addGoal: (goal: Omit<SavingsGoal, 'id'>) => void;
+  updateGoal: (id: string, updates: Partial<Omit<SavingsGoal, 'id'>>) => void;
+  deleteGoal: (id: string) => void;
+  /** Positive adds to the goal, negative takes money out. */
   contributeToGoal: (goalId: string, amount: number) => void;
   addBill: (bill: Omit<RecurringBill, 'id' | 'paidMonths'>) => void;
+  updateBill: (
+    id: string,
+    updates: Partial<Omit<RecurringBill, 'id' | 'paidMonths'>>
+  ) => void;
+  deleteBill: (id: string) => void;
   markBillPaid: (billId: string) => void;
   recordBackup: (info: BackupInfo) => void;
   exportSnapshot: () => BudgetSnapshot;
   restoreSnapshot: (data: unknown) => boolean;
+  /** Erases all budget data on this phone. */
+  resetAll: () => void;
   hideAmountsOnHome: boolean;
   setHideAmountsOnHome: (v: boolean) => void;
   noxSuggestionsEnabled: boolean;
   setNoxSuggestionsEnabled: (v: boolean) => void;
-  appLockEnabled: boolean;
-  setAppLockEnabled: (v: boolean) => void;
 }
 
 const STARTER_EXPENSE_CATEGORIES = [
@@ -197,6 +234,8 @@ const STARTER_EXPENSE_CATEGORIES = [
   'Fun',
 ];
 const STARTER_INCOME_CATEGORIES = ['Salary', 'Other income'];
+
+const SNAPSHOT_VERSION = 2;
 
 const DEFAULT_WALLET: WalletRecord = {
   id: 'w-cash',
@@ -236,12 +275,71 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   const [lastBackup, setLastBackup] = useState<BackupInfo | null>(null);
   const [hideAmountsOnHome, setHideAmountsOnHome] = useState(false);
   const [noxSuggestionsEnabled, setNoxSuggestionsEnabled] = useState(true);
-  const [appLockEnabled, setAppLockEnabled] = useState(true);
+  const [hydrated, setHydrated] = useState(false);
 
   // Seed starter categories once, after the user picks "Simple" in onboarding.
   const seededRef = useRef(false);
+
   useEffect(() => {
-    if (!hasCompletedOnboarding || seededRef.current) return;
+    let cancelled = false;
+    loadJSON<Partial<PersistedBudget>>(STORAGE_KEYS.budget).then((saved) => {
+      if (cancelled) return;
+      if (saved) {
+        if (Array.isArray(saved.transactions)) setTransactions(saved.transactions);
+        if (Array.isArray(saved.categories)) setCategoryRecords(saved.categories);
+        if (Array.isArray(saved.wallets) && saved.wallets.length > 0) {
+          setWalletRecords(saved.wallets);
+        }
+        if (Array.isArray(saved.transfers)) setTransfers(saved.transfers);
+        if (Array.isArray(saved.goals)) setGoals(saved.goals);
+        if (Array.isArray(saved.bills)) setBills(saved.bills);
+        setLastBackup(saved.lastBackup ?? null);
+        if (typeof saved.hideAmountsOnHome === 'boolean') {
+          setHideAmountsOnHome(saved.hideAmountsOnHome);
+        }
+        if (typeof saved.noxSuggestionsEnabled === 'boolean') {
+          setNoxSuggestionsEnabled(saved.noxSuggestionsEnabled);
+        }
+        seededRef.current = !!saved.seeded;
+      }
+      setHydrated(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const data: PersistedBudget = {
+      version: SNAPSHOT_VERSION,
+      transactions,
+      categories: categoryRecords,
+      wallets: walletRecords,
+      transfers,
+      goals,
+      bills,
+      seeded: seededRef.current,
+      lastBackup,
+      hideAmountsOnHome,
+      noxSuggestionsEnabled,
+    };
+    saveJSON(STORAGE_KEYS.budget, data);
+  }, [
+    hydrated,
+    transactions,
+    categoryRecords,
+    walletRecords,
+    transfers,
+    goals,
+    bills,
+    lastBackup,
+    hideAmountsOnHome,
+    noxSuggestionsEnabled,
+  ]);
+
+  useEffect(() => {
+    if (!hydrated || !hasCompletedOnboarding || seededRef.current) return;
     seededRef.current = true;
     if (starterMode !== 'simple') return;
     setCategoryRecords((prev) =>
@@ -262,7 +360,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
             })),
           ]
     );
-  }, [hasCompletedOnboarding, starterMode]);
+  }, [hydrated, hasCompletedOnboarding, starterMode]);
 
   // Re-evaluated every render so date-based values roll over at midnight.
   const todayKey = toISODate(new Date());
@@ -410,16 +508,36 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addCategory = useCallback(
-    (name: string, limit: number, type: CategoryType = 'expense') => {
+    (
+      name: string,
+      limit: number,
+      type: CategoryType = 'expense',
+      options?: { movePastMatches?: boolean }
+    ): number => {
       const trimmed = name.trim();
-      if (!trimmed) return;
-      setCategoryRecords((prev) =>
-        prev.some((c) => c.type === type && sameName(c.name, trimmed))
-          ? prev
-          : [...prev, { id: makeId('cat'), name: trimmed, limit, type }]
-      );
+      if (!trimmed) return -1;
+      if (categoryRecords.some((c) => c.type === type && sameName(c.name, trimmed))) {
+        return -1;
+      }
+      setCategoryRecords((prev) => [
+        ...prev,
+        { id: makeId('cat'), name: trimmed, limit, type },
+      ]);
+      if (!options?.movePastMatches) return 0;
+      const needle = trimmed.toLowerCase();
+      const matches = (t: Transaction) =>
+        t.type === type &&
+        !sameName(t.category, trimmed) &&
+        `${t.title} ${t.note ?? ''}`.toLowerCase().includes(needle);
+      const moved = transactions.filter(matches).length;
+      if (moved > 0) {
+        setTransactions((prev) =>
+          prev.map((t) => (matches(t) ? { ...t, category: trimmed } : t))
+        );
+      }
+      return moved;
     },
-    []
+    [categoryRecords, transactions]
   );
 
   const updateCategory = useCallback(
@@ -443,6 +561,11 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     },
     [categoryRecords]
   );
+
+  const deleteCategory = useCallback((id: string) => {
+    // Past entries keep their category label so history stays readable.
+    setCategoryRecords((prev) => prev.filter((c) => c.id !== id));
+  }, []);
 
   const reorderCategory = useCallback((id: string, direction: 'up' | 'down') => {
     setCategoryRecords((prev) => {
@@ -472,6 +595,69 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     ]);
   }, []);
 
+  const updateWallet = useCallback(
+    (
+      id: string,
+      updates: Partial<Pick<WalletRecord, 'name' | 'subtitle' | 'iconType'>>
+    ) => {
+      const existing = walletRecords.find((w) => w.id === id);
+      if (!existing) return;
+      const nextName = updates.name?.trim() || existing.name;
+      if (
+        !sameName(nextName, existing.name) &&
+        walletRecords.some((w) => w.id !== id && sameName(w.name, nextName))
+      ) {
+        return;
+      }
+      setWalletRecords((prev) =>
+        prev.map((w) => (w.id === id ? { ...w, ...updates, name: nextName } : w))
+      );
+      // Balances are matched by wallet name, so carry a rename through history.
+      if (nextName !== existing.name) {
+        const rename = (n: string) => (n === existing.name ? nextName : n);
+        setTransactions((prev) =>
+          prev.map((t) => (t.wallet === existing.name ? { ...t, wallet: nextName } : t))
+        );
+        setTransfers((prev) =>
+          prev.map((tr) => ({ ...tr, from: rename(tr.from), to: rename(tr.to) }))
+        );
+        setBills((prev) => prev.map((b) => ({ ...b, wallet: rename(b.wallet) })));
+      }
+    },
+    [walletRecords]
+  );
+
+  const setDefaultWallet = useCallback((id: string) => {
+    setWalletRecords((prev) => prev.map((w) => ({ ...w, isDefault: w.id === id })));
+  }, []);
+
+  const deleteWallet = useCallback(
+    (id: string): string | null => {
+      const wallet = walletRecords.find((w) => w.id === id);
+      if (!wallet) return null;
+      if (walletRecords.length <= 1) return 'You need at least one wallet.';
+      const used =
+        transactions.filter((t) => t.wallet === wallet.name).length +
+        transfers.filter((tr) => tr.from === wallet.name || tr.to === wallet.name)
+          .length;
+      if (used > 0) {
+        return `${wallet.name} has ${used} ${used === 1 ? 'entry' : 'entries'}. Move or delete them first.`;
+      }
+      if (bills.some((b) => b.wallet === wallet.name)) {
+        return `${wallet.name} pays a recurring bill. Change that bill's wallet first.`;
+      }
+      setWalletRecords((prev) => {
+        const rest = prev.filter((w) => w.id !== id);
+        if (wallet.isDefault && rest.length > 0) {
+          rest[0] = { ...rest[0], isDefault: true };
+        }
+        return rest;
+      });
+      return null;
+    },
+    [walletRecords, transactions, transfers, bills]
+  );
+
   const transferBetweenWallets = useCallback(
     (fromId: string, toId: string, amount: number) => {
       if (fromId === toId || amount <= 0) return;
@@ -492,21 +678,49 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     [walletRecords]
   );
 
+  const deleteTransfer = useCallback((id: string) => {
+    setTransfers((prev) => prev.filter((tr) => tr.id !== id));
+  }, []);
+
   const addGoal = useCallback((goal: Omit<SavingsGoal, 'id'>) => {
     setGoals((prev) => [...prev, { ...goal, id: makeId('g') }]);
   }, []);
 
+  const updateGoal = useCallback(
+    (id: string, updates: Partial<Omit<SavingsGoal, 'id'>>) => {
+      setGoals((prev) => prev.map((g) => (g.id === id ? { ...g, ...updates } : g)));
+    },
+    []
+  );
+
+  const deleteGoal = useCallback((id: string) => {
+    setGoals((prev) => prev.filter((g) => g.id !== id));
+  }, []);
+
   const contributeToGoal = useCallback((goalId: string, amount: number) => {
-    if (amount <= 0) return;
+    if (!Number.isFinite(amount) || amount === 0) return;
     setGoals((prev) =>
       prev.map((g) =>
-        g.id === goalId ? { ...g, saved: Math.min(g.target, g.saved + amount) } : g
+        g.id === goalId
+          ? { ...g, saved: Math.max(0, Math.min(g.target, g.saved + amount)) }
+          : g
       )
     );
   }, []);
 
   const addBill = useCallback((bill: Omit<RecurringBill, 'id' | 'paidMonths'>) => {
     setBills((prev) => [...prev, { ...bill, id: makeId('b'), paidMonths: [] }]);
+  }, []);
+
+  const updateBill = useCallback(
+    (id: string, updates: Partial<Omit<RecurringBill, 'id' | 'paidMonths'>>) => {
+      setBills((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
+    },
+    []
+  );
+
+  const deleteBill = useCallback((id: string) => {
+    setBills((prev) => prev.filter((b) => b.id !== id));
   }, []);
 
   const markBillPaid = useCallback(
@@ -542,7 +756,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
 
   const exportSnapshot = useCallback(
     (): BudgetSnapshot => ({
-      version: 2,
+      version: SNAPSHOT_VERSION,
       transactions,
       categories: categoryRecords,
       wallets: walletRecords,
@@ -576,8 +790,23 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, []);
 
+  const resetAll = useCallback(() => {
+    setTransactions([]);
+    setCategoryRecords([]);
+    setWalletRecords([DEFAULT_WALLET]);
+    setTransfers([]);
+    setGoals([]);
+    setBills([]);
+    setLastBackup(null);
+    setHideAmountsOnHome(false);
+    setNoxSuggestionsEnabled(true);
+    seededRef.current = false;
+    removeKeys([STORAGE_KEYS.budget]);
+  }, []);
+
   const value = useMemo<BudgetContextValue>(
     () => ({
+      hydrated,
       today,
       period,
       previousPeriod,
@@ -605,24 +834,33 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       raiseCategoryLimit,
       addCategory,
       updateCategory,
+      deleteCategory,
       reorderCategory,
       addWallet,
+      updateWallet,
+      setDefaultWallet,
+      deleteWallet,
       transferBetweenWallets,
+      deleteTransfer,
       addGoal,
+      updateGoal,
+      deleteGoal,
       contributeToGoal,
       addBill,
+      updateBill,
+      deleteBill,
       markBillPaid,
       recordBackup,
       exportSnapshot,
       restoreSnapshot,
+      resetAll,
       hideAmountsOnHome,
       setHideAmountsOnHome,
       noxSuggestionsEnabled,
       setNoxSuggestionsEnabled,
-      appLockEnabled,
-      setAppLockEnabled,
     }),
     [
+      hydrated,
       today,
       period,
       previousPeriod,
@@ -650,19 +888,28 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       raiseCategoryLimit,
       addCategory,
       updateCategory,
+      deleteCategory,
       reorderCategory,
       addWallet,
+      updateWallet,
+      setDefaultWallet,
+      deleteWallet,
       transferBetweenWallets,
+      deleteTransfer,
       addGoal,
+      updateGoal,
+      deleteGoal,
       contributeToGoal,
       addBill,
+      updateBill,
+      deleteBill,
       markBillPaid,
       recordBackup,
       exportSnapshot,
       restoreSnapshot,
+      resetAll,
       hideAmountsOnHome,
       noxSuggestionsEnabled,
-      appLockEnabled,
     ]
   );
 
