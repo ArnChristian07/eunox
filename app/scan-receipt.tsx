@@ -19,6 +19,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Camera, X, Zap } from 'lucide-react-native';
 import { NoxMiniIcon } from '@/components/NoxMascot';
 import { useBudget } from '@/context/BudgetContext';
+import { useLock } from '@/context/LockContext';
 import { useOnboarding } from '@/context/OnboardingContext';
 import { daysBetween, formatShortDate, toISODate } from '@/lib/dates';
 import { isValidPositiveAmount, parseAmount } from '@/lib/format';
@@ -82,6 +83,8 @@ export default function ScanReceiptScreen() {
   const { selectedCurrency } = useOnboarding();
   const { today, defaultWallet, wallets, expenseCategories, transactions, addTransaction } =
     useBudget();
+  // This screen stays mounted under the lock screen; release the camera meanwhile.
+  const { locked: appLocked } = useLock();
   const sym = selectedCurrency.symbol;
 
   const [permission, requestPermission, getPermission] = useCameraPermissions();
@@ -116,6 +119,16 @@ export default function ScanReceiptScreen() {
       photoUriRef.current = null;
     };
   }, []);
+
+  // The camera unmounts while locked; wait for a fresh onCameraReady after unlocking.
+  const [prevAppLocked, setPrevAppLocked] = useState(appLocked);
+  if (appLocked !== prevAppLocked) {
+    setPrevAppLocked(appLocked);
+    if (appLocked) {
+      setCameraReady(false);
+      setTorch(false);
+    }
+  }
 
   // Re-check camera permission when returning from Android Settings or Privacy Dashboard.
   useEffect(() => {
@@ -323,7 +336,7 @@ export default function ScanReceiptScreen() {
   return (
     <View className="flex-1 bg-[#141413]">
       {/* Live camera while scanning; avoid decoding <Image> during OCR to halve peak RAM */}
-      {step === 'camera' && hasPermission && canReadReceipts ? (
+      {step === 'camera' && hasPermission && canReadReceipts && !appLocked ? (
         <CameraView
           ref={cameraRef}
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
@@ -350,6 +363,7 @@ export default function ScanReceiptScreen() {
           {/* Header */}
           <View className="flex-row items-center justify-between px-5 pt-2">
             <Pressable
+              accessibilityRole="button"
               onPress={() => router.back()}
               accessibilityLabel="Close scanner"
               className="w-11 h-11 rounded-2xl bg-[#272724] items-center justify-center active:opacity-75"
@@ -361,6 +375,7 @@ export default function ScanReceiptScreen() {
 
             {step === 'camera' && hasPermission ? (
               <Pressable
+                accessibilityRole="button"
                 onPress={() => setTorch((prev) => !prev)}
                 accessibilityLabel={torch ? 'Turn flash off' : 'Turn flash on'}
                 className={`w-11 h-11 rounded-2xl items-center justify-center active:opacity-75 ${
@@ -418,24 +433,24 @@ export default function ScanReceiptScreen() {
               </View>
 
               {draft.notice ? (
-                <Text className="mt-2 text-[13px] leading-[18px] text-[#B85318]">
+                <Text style={{ color: '#C2410C' }} className="mt-2 text-[13px] leading-[18px]">
                   {draft.notice}
                 </Text>
               ) : null}
 
               {/* Amount */}
-              <View className="mt-4 flex-row items-center bg-white border border-warm-border rounded-2xl px-4 h-14">
+              <View className="mt-4 flex-row items-center bg-white border border-muted-gray rounded-2xl px-4 h-14">
                 <Text className="text-[22px] font-bold text-charcoal">{sym}</Text>
                 <TextInput
                   value={draft.amount}
                   onChangeText={(text) => {
                     setError(null);
-                    // Some keypads type a decimal comma; parseAmount expects a dot.
-                    setDraft({ ...draft, amount: text.replace(/,/g, '.').replace(/[^0-9.]/g, '') });
+                    // parseAmount accepts both 12.50 and 12,50, so keep either separator.
+                    setDraft({ ...draft, amount: text.replace(/[^0-9.,]/g, '') });
                   }}
                   keyboardType="decimal-pad"
                   placeholder="0.00"
-                  placeholderTextColor="#B5B3AA"
+                  placeholderTextColor="#8A8880"
                   accessibilityLabel="Amount"
                   className="flex-1 ml-1 text-[22px] font-bold text-charcoal"
                 />
@@ -448,7 +463,7 @@ export default function ScanReceiptScreen() {
                 placeholder="Store or merchant"
                 placeholderTextColor="#8A8880"
                 accessibilityLabel="Merchant"
-                className="mt-2.5 bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal"
+                className="mt-2.5 bg-white border border-muted-gray rounded-2xl px-4 h-12 text-[15px] text-charcoal"
               />
 
               {/* Category */}
@@ -462,6 +477,7 @@ export default function ScanReceiptScreen() {
                   const active = draft.category === name;
                   return (
                     <Pressable
+                      accessibilityRole="button"
                       key={name}
                       onPress={() => setDraft({ ...draft, category: name })}
                       className={`rounded-full px-3.5 py-1.5 border ${
@@ -478,6 +494,7 @@ export default function ScanReceiptScreen() {
               <View className="flex-row flex-wrap gap-2 mt-3">
                 {draft.receiptDate && daysBetween(draft.receiptDate, today) > 0 ? (
                   <Pressable
+                    accessibilityRole="button"
                     onPress={() => setDraft({ ...draft, useReceiptDate: !draft.useReceiptDate })}
                     className="bg-white border border-warm-border rounded-full px-3 py-1.5 active:opacity-75"
                   >
@@ -495,6 +512,7 @@ export default function ScanReceiptScreen() {
                 )}
                 {selectedWallet ? (
                   <Pressable
+                    accessibilityRole="button"
                     onPress={cycleWallet}
                     disabled={wallets.length < 2}
                     className="bg-white border border-warm-border rounded-full px-3 py-1.5 active:opacity-75"
@@ -514,11 +532,12 @@ export default function ScanReceiptScreen() {
               </View>
 
               {error ? (
-                <Text className="mt-3 text-[13px] font-semibold text-[#B85318]">{error}</Text>
+                <Text style={{ color: '#C2410C' }} className="mt-3 text-[13px] font-semibold">{error}</Text>
               ) : null}
 
               <View className="flex-row gap-3 mt-5">
                 <Pressable
+                  accessibilityRole="button"
                   onPress={handleRetake}
                   className="flex-1 bg-white border border-warm-border rounded-full h-[52px] items-center justify-center active:opacity-75"
                 >
@@ -527,6 +546,7 @@ export default function ScanReceiptScreen() {
                   </Text>
                 </Pressable>
                 <Pressable
+                  accessibilityRole="button"
                   onPress={handleSave}
                   className="flex-1 bg-charcoal rounded-full h-[52px] items-center justify-center active:opacity-85"
                 >
@@ -597,6 +617,7 @@ function CameraStep({
       <View className="items-center pb-10 gap-4">
         {!canReadReceipts ? (
           <Pressable
+            accessibilityRole="button"
             onPress={onManualEntry}
             className="bg-white rounded-full px-6 h-[48px] items-center justify-center active:opacity-85"
           >
@@ -608,6 +629,7 @@ function CameraStep({
           </View>
         ) : !hasPermission ? (
           <Pressable
+            accessibilityRole="button"
             onPress={canAskAgain ? onRequestPermission : onOpenSettings}
             className="bg-nox-lime rounded-full px-6 h-[48px] items-center justify-center active:opacity-85"
           >
@@ -630,7 +652,7 @@ function CameraStep({
         )}
 
         {canReadReceipts ? (
-          <Pressable onPress={onManualEntry} className="active:opacity-75">
+          <Pressable accessibilityRole="button" onPress={onManualEntry} className="active:opacity-75">
             <Text className="text-[13px] font-medium text-white/70">Type it in instead</Text>
           </Pressable>
         ) : null}

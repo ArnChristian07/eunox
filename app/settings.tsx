@@ -7,11 +7,13 @@ import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { getBillStatus, useBudget } from '@/context/BudgetContext';
 import { useLock } from '@/context/LockContext';
 import { useOnboarding } from '@/context/OnboardingContext';
+import { useTour } from '@/context/TourContext';
 import { formatTimeAgo } from '@/lib/dates';
 
 export default function SettingsScreen() {
   const { selectedCurrency, monthStart } = useOnboarding();
   const lock = useLock();
+  const { requestTour } = useTour();
   const {
     today,
     wallets,
@@ -62,6 +64,7 @@ export default function SettingsScreen() {
         {/* Header */}
         <View className="flex-row items-center gap-3 pt-2 pb-4">
           <Pressable
+            accessibilityRole="button"
             onPress={() => router.back()}
             accessibilityLabel="Back"
             className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
@@ -79,6 +82,7 @@ export default function SettingsScreen() {
         </Text>
         <View className="bg-white border border-warm-border rounded-3xl px-4">
           <Pressable
+            accessibilityRole="button"
             onPress={() => router.push('/onboarding/currency')}
             className="flex-row items-center justify-between py-4 border-b border-warm-border"
           >
@@ -94,6 +98,7 @@ export default function SettingsScreen() {
           </Pressable>
 
           <Pressable
+            accessibilityRole="button"
             onPress={() => router.push('/wallets')}
             className="flex-row items-center justify-between py-4 border-b border-warm-border"
           >
@@ -109,6 +114,7 @@ export default function SettingsScreen() {
           </Pressable>
 
           <Pressable
+            accessibilityRole="button"
             onPress={() => router.push('/categories' as Href)}
             className="flex-row items-center justify-between py-4 border-b border-warm-border"
           >
@@ -124,6 +130,7 @@ export default function SettingsScreen() {
           </Pressable>
 
           <Pressable
+            accessibilityRole="button"
             onPress={() => router.push('/recurring-bills' as Href)}
             className="flex-row items-center justify-between py-4 border-b border-warm-border"
           >
@@ -137,6 +144,7 @@ export default function SettingsScreen() {
           </Pressable>
 
           <Pressable
+            accessibilityRole="button"
             onPress={() => router.push('/savings-goals' as Href)}
             className="flex-row items-center justify-between py-4 border-b border-warm-border"
           >
@@ -150,6 +158,7 @@ export default function SettingsScreen() {
           </Pressable>
 
           <Pressable
+            accessibilityRole="button"
             onPress={() => router.push('/onboarding/budget')}
             className="flex-row items-center justify-between py-4"
           >
@@ -171,6 +180,7 @@ export default function SettingsScreen() {
         </Text>
         <View className="bg-white border border-warm-border rounded-3xl px-4">
           <Pressable
+            accessibilityRole="button"
             onPress={() => lock.enabled && router.push('/lock')}
             disabled={!lock.supported}
             className="flex-row items-center justify-between py-3.5 border-b border-warm-border"
@@ -186,8 +196,9 @@ export default function SettingsScreen() {
             <Switch
               value={lock.enabled}
               onValueChange={handleLockToggle}
+              accessibilityLabel="App lock"
               disabled={!lock.supported}
-              trackColor={{ false: '#D9D7CE', true: '#141413' }}
+              trackColor={{ false: '#8A8880', true: '#141413' }}
               thumbColor="#FFFFFF"
             />
           </Pressable>
@@ -204,12 +215,14 @@ export default function SettingsScreen() {
             <Switch
               value={hideAmountsOnHome}
               onValueChange={setHideAmountsOnHome}
-              trackColor={{ false: '#D9D7CE', true: '#141413' }}
+              accessibilityLabel="Hide amounts on Home"
+              trackColor={{ false: '#8A8880', true: '#141413' }}
               thumbColor="#FFFFFF"
             />
           </View>
 
           <Pressable
+            accessibilityRole="button"
             onPress={() => router.push('/backup')}
             className="flex-row items-center justify-between py-3.5"
           >
@@ -244,11 +257,31 @@ export default function SettingsScreen() {
             <Switch
               value={noxSuggestionsEnabled}
               onValueChange={setNoxSuggestionsEnabled}
-              trackColor={{ false: '#D9D7CE', true: '#141413' }}
+              accessibilityLabel="Nox suggestions"
+              trackColor={{ false: '#8A8880', true: '#141413' }}
               thumbColor="#FFFFFF"
             />
           </View>
 
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              // Settings is opened from Home; going back there starts the tutorial.
+              requestTour();
+              router.back();
+            }}
+            className="flex-row items-center justify-between py-3.5 border-t border-warm-border"
+          >
+            <View className="flex-1 pr-3">
+              <Text className="text-[15px] font-medium text-charcoal">
+                Replay tutorial
+              </Text>
+              <Text className="text-[12.5px] text-warm-gray mt-0.5">
+                Learn the basics by trying them
+              </Text>
+            </View>
+            <ChevronRight size={16} color="#8A8880" strokeWidth={2} />
+          </Pressable>
         </View>
 
         <Text className="mt-6 text-center text-[12.5px] text-warm-gray">

@@ -17,7 +17,6 @@ import {
   Download,
   FileText,
   RotateCcw,
-  ShieldCheck,
   Table,
   Upload,
   X,
@@ -194,6 +193,7 @@ export default function BackupScreen() {
         {/* Header */}
         <View className="flex-row items-center gap-3 pt-2 pb-4">
           <Pressable
+            accessibilityRole="button"
             onPress={() => router.back()}
             accessibilityLabel="Back"
             className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
@@ -208,12 +208,12 @@ export default function BackupScreen() {
         {storageError ? (
           <View className="mb-4 rounded-2xl px-4 py-3 flex-row items-center justify-between bg-[#FCEEE4]">
             <View className="flex-row items-center gap-2 flex-1 pr-2">
-              <AlertTriangle size={16} color="#B85318" strokeWidth={2.2} />
-              <Text className="text-[13.5px] font-semibold text-[#B85318]">
+              <AlertTriangle size={16} color="#C2410C" strokeWidth={2.2} />
+              <Text style={{ color: '#C2410C' }} className="text-[13.5px] font-semibold">
                 {storageError}
               </Text>
             </View>
-            <Pressable onPress={clearStorageError} accessibilityLabel="Dismiss">
+            <Pressable accessibilityRole="button" onPress={clearStorageError} accessibilityLabel="Dismiss">
               <X size={16} color="#141413" />
             </Pressable>
           </View>
@@ -229,17 +229,18 @@ export default function BackupScreen() {
               {banner.kind === 'ok' ? (
                 <Check size={16} color="#141413" strokeWidth={2.5} />
               ) : (
-                <AlertTriangle size={16} color="#B85318" strokeWidth={2.2} />
+                <AlertTriangle size={16} color="#C2410C" strokeWidth={2.2} />
               )}
               <Text
+                style={banner.kind !== 'ok' ? { color: '#C2410C' } : undefined}
                 className={`text-[13.5px] font-semibold ${
-                  banner.kind === 'ok' ? 'text-charcoal' : 'text-[#B85318]'
+                  banner.kind === 'ok' ? 'text-charcoal' : ''
                 }`}
               >
                 {banner.text}
               </Text>
             </View>
-            <Pressable onPress={() => setBanner(null)} accessibilityLabel="Dismiss">
+            <Pressable accessibilityRole="button" onPress={() => setBanner(null)} accessibilityLabel="Dismiss">
               <X size={16} color="#141413" />
             </Pressable>
           </View>
@@ -247,10 +248,7 @@ export default function BackupScreen() {
 
         {/* Backup Status Card */}
         <View className="bg-white border border-warm-border rounded-3xl p-4">
-          <View className="flex-row items-center gap-3">
-            <View className="w-11 h-11 rounded-2xl bg-[#F3F2EC] items-center justify-center">
-              <ShieldCheck size={22} color="#141413" strokeWidth={1.9} />
-            </View>
+          <View className="flex-row items-center">
             <View className="flex-1">
               <Text className="text-[15.5px] font-bold text-charcoal">
                 {lastBackup
@@ -266,6 +264,7 @@ export default function BackupScreen() {
           </View>
 
           <Pressable
+            accessibilityRole="button"
             onPress={handleBackupNow}
             disabled={busy !== null}
             className="mt-4 bg-charcoal rounded-full h-[50px] flex-row items-center justify-center gap-2 active:opacity-85"
@@ -292,6 +291,7 @@ export default function BackupScreen() {
 
         <View className="gap-3">
           <Pressable
+            accessibilityRole="button"
             onPress={handleExportCsv}
             disabled={busy !== null}
             className="bg-white border border-warm-border rounded-2xl px-4 py-4 flex-row items-center gap-3 active:opacity-75"
@@ -304,6 +304,7 @@ export default function BackupScreen() {
           </Pressable>
 
           <Pressable
+            accessibilityRole="button"
             onPress={handlePickFile}
             disabled={busy !== null}
             className="bg-white border border-warm-border rounded-2xl px-4 py-4 flex-row items-center gap-3 active:opacity-75"
@@ -318,8 +319,8 @@ export default function BackupScreen() {
 
         {/* Warning */}
         <View className="flex-row items-start gap-2.5 mt-4 px-1">
-          <AlertTriangle size={16} color="#B85318" strokeWidth={2} />
-          <Text className="flex-1 text-[13px] leading-[18px] text-[#B85318]">
+          <AlertTriangle size={16} color="#C2410C" strokeWidth={2} />
+          <Text style={{ color: '#C2410C' }} className="flex-1 text-[13px] leading-[18px]">
             Backup files are not encrypted. Restoring replaces everything on this
             phone.
           </Text>
@@ -336,7 +337,7 @@ export default function BackupScreen() {
         <View className="flex-1 bg-black/45 items-center justify-center px-6">
           <View className="w-full bg-white rounded-3xl p-6">
             <View className="w-12 h-12 rounded-2xl bg-[#FCEEE4] items-center justify-center mb-4">
-              <RotateCcw size={22} color="#B85318" strokeWidth={2} />
+              <RotateCcw size={22} color="#C2410C" strokeWidth={2} />
             </View>
 
             <Text className="text-[20px] leading-[26px] font-bold text-charcoal">
@@ -370,7 +371,8 @@ export default function BackupScreen() {
                 <Switch
                   value={backupBeforeRestore}
                   onValueChange={setBackupBeforeRestore}
-                  trackColor={{ false: '#D9D7CE', true: '#141413' }}
+                  accessibilityLabel="Back up today's data before restoring"
+                  trackColor={{ false: '#8A8880', true: '#141413' }}
                   thumbColor="#FFFFFF"
                 />
               </View>
@@ -378,6 +380,7 @@ export default function BackupScreen() {
 
             <View className="flex-row gap-3 mt-5">
               <Pressable
+                accessibilityRole="button"
                 onPress={() => setPicked(null)}
                 disabled={busy === 'restore'}
                 className="flex-1 h-12 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
@@ -386,14 +389,19 @@ export default function BackupScreen() {
               </Pressable>
 
               <Pressable
+                accessibilityRole="button"
                 onPress={handleConfirmRestore}
                 disabled={busy === 'restore'}
-                className="flex-1 h-12 rounded-2xl bg-[#B85318] items-center justify-center active:opacity-85"
+                // Inline colour: a stale NativeWind build must never leave this white-on-white.
+                style={{ backgroundColor: '#C2410C' }}
+                className="flex-1 h-12 rounded-2xl items-center justify-center active:opacity-85"
               >
                 {busy === 'restore' ? (
                   <ActivityIndicator color="#FFFFFF" />
                 ) : (
-                  <Text className="text-[15px] font-semibold text-white">Restore</Text>
+                  <Text style={{ color: '#FFFFFF' }} className="text-[15px] font-semibold">
+                    Restore
+                  </Text>
                 )}
               </Pressable>
             </View>

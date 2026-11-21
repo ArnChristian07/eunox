@@ -1,4 +1,5 @@
 import { NoxMiniIcon } from '@/components/NoxMascot';
+import { TourTarget, useTourScreen } from '@/components/TourTarget';
 import { CategoryBudget, useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
 import { formatMoney } from '@/lib/format';
@@ -45,6 +46,7 @@ export default function BudgetsScreen() {
     raiseCategoryLimit,
     noxSuggestionsEnabled,
   } = useBudget();
+  useTourScreen('budgets');
   const [lastMove, setLastMove] = useState<{
     from: string;
     to: string;
@@ -100,6 +102,7 @@ export default function BudgetsScreen() {
           </View>
 
           <Pressable
+            accessibilityRole="button"
             onPress={() => router.push('/add-transaction')}
             className="flex-row items-center gap-1.5 bg-white border border-warm-border rounded-full px-4 py-2 active:opacity-75"
           >
@@ -112,7 +115,7 @@ export default function BudgetsScreen() {
         {overBudgetCat ? (
           <View className="bg-[#FCEEE4] border border-[#F2CBB0] rounded-3xl p-4">
             <View className="flex-row items-start gap-2.5">
-              <AlertTriangle size={18} color="#B85318" strokeWidth={2.2} />
+              <AlertTriangle size={18} color="#C2410C" strokeWidth={2.2} />
               <View className="flex-1">
                 <Text className="text-[15px] font-bold text-[#9A3F0D]">
                   {overBudgetCat.name} is {formatMoney(overAmount, sym, 0)} over
@@ -129,6 +132,7 @@ export default function BudgetsScreen() {
             <View className="flex-row gap-2.5 mt-4">
               {overDonor ? (
                 <Pressable
+                  accessibilityRole="button"
                   onPress={() =>
                     handleMove(overDonor.name, overBudgetCat.name, overMoveAmount)
                   }
@@ -140,6 +144,7 @@ export default function BudgetsScreen() {
                 </Pressable>
               ) : null}
               <Pressable
+                accessibilityRole="button"
                 onPress={() =>
                   raiseCategoryLimit(overBudgetCat.name, overBudgetCat.spent)
                 }
@@ -181,6 +186,7 @@ export default function BudgetsScreen() {
         )}
 
         {/* Category Breakdown */}
+        <TourTarget id="budgets-categories">
         {categories.length === 0 ? (
           <View className="mt-5 bg-white border border-warm-border rounded-3xl p-5 items-center">
             <Text className="text-[15.5px] font-semibold text-charcoal">
@@ -190,6 +196,7 @@ export default function BudgetsScreen() {
               Add categories to give each kind of spending its own limit.
             </Text>
             <Pressable
+              accessibilityRole="button"
               onPress={() => router.push('/categories' as Href)}
               className="mt-4 bg-charcoal rounded-full px-4 py-2.5 active:opacity-85"
             >
@@ -209,6 +216,7 @@ export default function BudgetsScreen() {
 
               return (
                 <Pressable
+                  accessibilityRole="button"
                   key={cat.id}
                   onPress={() => router.push('/categories' as Href)}
                   className={`py-3.5 active:opacity-70 ${
@@ -223,8 +231,9 @@ export default function BudgetsScreen() {
                     </Text>
                     <Text className="text-[14.5px]">
                       <Text
+                        style={isOver ? { color: '#C2410C' } : undefined}
                         className={`font-bold ${
-                          isOver ? 'text-[#B85318]' : 'text-charcoal'
+                          isOver ? '' : 'text-charcoal'
                         }`}
                       >
                         {formatCompactMoney(cat.spent, sym)}
@@ -242,18 +251,18 @@ export default function BudgetsScreen() {
                       <View
                         style={{ width: `${Math.min(100, pct)}%` }}
                         className={`h-full rounded-full ${
-                          isWarning ? 'bg-[#D96B27]' : 'bg-charcoal'
+                          isWarning ? 'bg-[#C9601F]' : 'bg-charcoal'
                         }`}
                       />
                     </View>
                   ) : null}
 
                   {isOver ? (
-                    <Text className="mt-1.5 text-[12px] font-medium text-[#B85318]">
+                    <Text style={{ color: '#C2410C' }} className="mt-1.5 text-[12px] font-medium">
                       {pct}% · {formatMoney(catOverAmt, sym, 0)} over
                     </Text>
                   ) : isWarning ? (
-                    <Text className="mt-1.5 text-[12px] font-medium text-[#B85318]">
+                    <Text style={{ color: '#C2410C' }} className="mt-1.5 text-[12px] font-medium">
                       {pct}% used
                     </Text>
                   ) : null}
@@ -262,6 +271,7 @@ export default function BudgetsScreen() {
             })}
           </View>
         )}
+        </TourTarget>
 
         {/* Nox Rebalance Suggestion */}
         {noxSuggestionsEnabled && !overBudgetCat && (lastMove || rebalanceAmount > 0) ? (
@@ -274,6 +284,7 @@ export default function BudgetsScreen() {
             </Text>
             {!lastMove && needy && rebalanceDonor ? (
               <Pressable
+                accessibilityRole="button"
                 onPress={() =>
                   handleMove(rebalanceDonor.name, needy.name, rebalanceAmount)
                 }

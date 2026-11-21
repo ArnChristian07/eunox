@@ -89,8 +89,51 @@ export function formatCompactNumber(n: number): string {
 }
 
 /**
- * Parses user-typed amounts like "1,250.50" or "₱300".
- * Rejects negative inputs unless `allowNegative` is true, rejects multiple decimal points,
+ * Turns digits mixed with "," and "." into a plain "1234.56" string, accepting both
+ * "1,234.56" and "1.234,56" styles (decimal-pad keyboards type "," in many locales).
+ * Returns null when the separators don't form a valid number.
+ */
+function normalizeSeparators(digitsAndSeps: string): string | null {
+  const lastIdx = Math.max(digitsAndSeps.lastIndexOf('.'), digitsAndSeps.lastIndexOf(','));
+  if (lastIdx < 0) return digitsAndSeps;
+
+  const last = digitsAndSeps[lastIdx];
+  const other = last === '.' ? ',' : '.';
+  const head = digitsAndSeps.slice(0, lastIdx);
+  const tail = digitsAndSeps.slice(lastIdx + 1);
+
+  if (head.includes(other) || head.includes(last)) {
+    if (head.includes(other)) {
+      // Both styles present ("1,234.56" / "1.234,56"): the last one is the decimal point.
+      if (head.includes(last)) return null;
+      const groups = head.split(other);
+      if (!isThousandsGrouping(groups)) return null;
+      return `${groups.join('')}.${tail}`;
+    }
+    // One separator repeated ("1,234,567" / "1.234.567"): thousands grouping only.
+    const groups = digitsAndSeps.split(last);
+    return isThousandsGrouping(groups) ? groups.join('') : null;
+  }
+
+  // A single separator followed by exactly three digits ("1,500" / "12.000") is a
+  // thousands separator; anything else ("12,50" / "12.5" / "0.500") is a decimal point.
+  if (tail.length === 3 && head.length >= 1 && head.length <= 3 && !/^0+$/.test(head)) {
+    return `${head}${tail}`;
+  }
+  return `${head || '0'}.${tail}`;
+}
+
+function isThousandsGrouping(groups: string[]): boolean {
+  return (
+    groups[0].length >= 1 &&
+    groups[0].length <= 3 &&
+    groups.slice(1).every((g) => g.length === 3)
+  );
+}
+
+/**
+ * Parses user-typed amounts like "1,250.50", "1.250,50", "12,50" or "₱300".
+ * Rejects negative inputs unless `allowNegative` is true, rejects malformed separators,
  * rejects scientific notation, and rounds to 2 decimal places capped at MAX_MONEY_AMOUNT.
  * Returns 0 when invalid.
  */
@@ -107,16 +150,15 @@ export function parseAmount(
   // Reject scientific notation (e.g. "1e-17", "1e22")
   if (/[eE]/.test(trimmed)) return 0;
 
-  // Strip currency symbols, spaces, and thousands commas, keeping digits and dots
-  const unsigned = (isNegative ? trimmed.slice(1) : trimmed).replace(/[^0-9.]/g, '');
-  if (!unsigned) return 0;
+  // Strip currency symbols and spaces, keeping digits and both separator styles
+  const unsigned = (isNegative ? trimmed.slice(1) : trimmed).replace(/[^0-9.,]/g, '');
+  if (!/\d/.test(unsigned)) return 0;
 
-  // Reject multiple decimal points (e.g. "12.34.56")
-  const dotParts = unsigned.split('.');
-  if (dotParts.length > 2) return 0;
+  const plain = normalizeSeparators(unsigned);
+  if (plain === null) return 0;
 
-  const normalized =
-    dotParts.length === 2 ? `${dotParts[0] || '0'}.${dotParts[1].slice(0, 2)}` : dotParts[0];
+  const [whole, dec] = plain.split('.');
+  const normalized = dec !== undefined ? `${whole || '0'}.${dec.slice(0, 2)}` : whole;
   const value = Number(normalized);
   if (!Number.isFinite(value) || value > MAX_MONEY_AMOUNT) return 0;
 

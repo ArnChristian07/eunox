@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { ChevronLeft, PiggyBank, Plus, Trash2, X } from 'lucide-react-native';
+import { FieldLabel } from '@/components/FieldLabel';
 import { NoxMiniIcon } from '@/components/NoxMascot';
 import { SavingsGoal, useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
@@ -136,6 +137,7 @@ export default function SavingsGoalsScreen() {
           <View className="flex-row items-center justify-between pt-2 pb-4">
             <View className="flex-row items-center gap-3">
               <Pressable
+                accessibilityRole="button"
                 onPress={() => router.back()}
                 accessibilityLabel="Back"
                 className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
@@ -148,6 +150,7 @@ export default function SavingsGoalsScreen() {
             </View>
 
             <Pressable
+              accessibilityRole="button"
               onPress={() => openSheet({ kind: 'new' })}
               className="flex-row items-center gap-1.5 bg-charcoal rounded-full px-4 py-2.5 active:opacity-85"
             >
@@ -169,6 +172,7 @@ export default function SavingsGoalsScreen() {
                 aside whenever you can.
               </Text>
               <Pressable
+                accessibilityRole="button"
                 onPress={() => openSheet({ kind: 'new' })}
                 className="mt-4 bg-charcoal rounded-full px-5 h-11 items-center justify-center active:opacity-85"
               >
@@ -200,6 +204,7 @@ export default function SavingsGoalsScreen() {
                       entering={FadeInDown.delay(idx * 60).duration(260)}
                     >
                       <Pressable
+                        accessibilityRole="button"
                         onPress={() => openSheet({ kind: 'edit', goal })}
                         className="bg-white border border-warm-border rounded-3xl p-4 active:opacity-90"
                       >
@@ -242,6 +247,7 @@ export default function SavingsGoalsScreen() {
                           </Text>
 
                           <Pressable
+                            accessibilityRole="button"
                             onPress={() => openSheet({ kind: 'money', goal })}
                             className="bg-white border border-warm-border rounded-full px-3.5 py-1.5 active:bg-cream"
                           >
@@ -270,6 +276,7 @@ export default function SavingsGoalsScreen() {
             </Text>
             <View className="gap-1.5">
               <Pressable
+                accessibilityRole="button"
                 onPress={() => {
                   contributeToGoal(suggestedGoal.id, suggestedAmount);
                   setSuggestionDismissed(true);
@@ -279,6 +286,7 @@ export default function SavingsGoalsScreen() {
                 <Text className="text-[14px] font-bold text-charcoal">Yes</Text>
               </Pressable>
               <Pressable
+                accessibilityRole="button"
                 onPress={() => setSuggestionDismissed(true)}
                 className="px-4 py-1 items-center active:opacity-70"
               >
@@ -313,7 +321,12 @@ export default function SavingsGoalsScreen() {
                     ? 'Edit goal'
                     : sheetGoal?.title}
               </Text>
-              <Pressable onPress={() => setSheet(null)} accessibilityLabel="Close">
+              <Pressable
+                onPress={() => setSheet(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                hitSlop={12}
+              >
                 <X size={20} color="#141413" />
               </Pressable>
             </View>
@@ -324,7 +337,7 @@ export default function SavingsGoalsScreen() {
                   {formatMoney(sheetGoal.saved, sym)} saved ·{' '}
                   {formatMoney(Math.max(0, sheetGoal.target - sheetGoal.saved), sym)} to go
                 </Text>
-                <View className="flex-row items-center bg-white border border-warm-border rounded-2xl px-4 h-12 mb-3">
+                <View className="flex-row items-center bg-white border border-muted-gray rounded-2xl px-4 h-12 mb-3">
                   <Text className="text-[16px] font-bold text-charcoal mr-1">{sym}</Text>
                   <TextInput
                     value={amount}
@@ -332,7 +345,8 @@ export default function SavingsGoalsScreen() {
                       setAmount(v);
                       setError(null);
                     }}
-                    keyboardType="numeric"
+                    accessibilityLabel={`Amount in ${sym}`}
+                    keyboardType="decimal-pad"
                     placeholder="0"
                     placeholderTextColor="#8A8880"
                     autoFocus
@@ -342,6 +356,7 @@ export default function SavingsGoalsScreen() {
                 <View className="flex-row gap-2 mb-4">
                   {QUICK_AMOUNTS.map((q) => (
                     <Pressable
+                      accessibilityRole="button"
                       key={q}
                       onPress={() => setAmount(String(q))}
                       className="flex-1 py-2 rounded-xl items-center bg-white border border-warm-border active:bg-[#EAE8E1]"
@@ -352,6 +367,7 @@ export default function SavingsGoalsScreen() {
                     </Pressable>
                   ))}
                   <Pressable
+                    accessibilityRole="button"
                     onPress={() =>
                       setAmount(String(Math.max(0, sheetGoal.target - sheetGoal.saved)))
                     }
@@ -361,10 +377,11 @@ export default function SavingsGoalsScreen() {
                   </Pressable>
                 </View>
                 {error ? (
-                  <Text className="mb-3 text-[13px] font-semibold text-[#B85318]">{error}</Text>
+                  <Text style={{ color: '#C2410C' }} className="mb-3 text-[13px] font-semibold">{error}</Text>
                 ) : null}
                 <View className="flex-row gap-3">
                   <Pressable
+                    accessibilityRole="button"
                     onPress={() => handleMoney(-1)}
                     disabled={sheetGoal.saved <= 0}
                     className={`flex-1 h-12 rounded-full items-center justify-center bg-white border border-warm-border active:opacity-75 ${
@@ -374,6 +391,7 @@ export default function SavingsGoalsScreen() {
                     <Text className="text-[15px] font-semibold text-charcoal">Take out</Text>
                   </Pressable>
                   <Pressable
+                    accessibilityRole="button"
                     onPress={() => handleMoney(1)}
                     className="flex-1 h-12 rounded-full items-center justify-center bg-charcoal active:opacity-85"
                   >
@@ -383,38 +401,45 @@ export default function SavingsGoalsScreen() {
               </>
             ) : (
               <>
+                <FieldLabel>Goal name</FieldLabel>
                 <TextInput
                   value={title}
                   onChangeText={(v) => {
                     setTitle(v);
                     setError(null);
                   }}
-                  placeholder="Goal name (e.g. Japan trip)"
+                  accessibilityLabel="Goal name"
+                  placeholder="e.g. Japan trip"
                   placeholderTextColor="#8A8880"
-                  className="bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-3"
+                  className="bg-white border border-muted-gray rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-3"
                 />
+                <FieldLabel>Target amount ({sym})</FieldLabel>
                 <TextInput
                   value={target}
                   onChangeText={(v) => {
                     setTarget(v);
                     setError(null);
                   }}
-                  keyboardType="numeric"
-                  placeholder={`Target amount (${sym}15,000)`}
+                  keyboardType="decimal-pad"
+                  accessibilityLabel={`Target amount in ${sym}`}
+                  placeholder="15,000"
                   placeholderTextColor="#8A8880"
-                  className="bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-3"
+                  className="bg-white border border-muted-gray rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-3"
                 />
+                <FieldLabel>Deadline or note (optional)</FieldLabel>
                 <TextInput
                   value={subtitle}
                   onChangeText={setSubtitle}
-                  placeholder="Deadline or note (optional)"
+                  accessibilityLabel="Deadline or note, optional"
+                  placeholder="e.g. By April"
                   placeholderTextColor="#8A8880"
-                  className="bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-4"
+                  className="bg-white border border-muted-gray rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-4"
                 />
                 {error ? (
-                  <Text className="mb-3 text-[13px] font-semibold text-[#B85318]">{error}</Text>
+                  <Text style={{ color: '#C2410C' }} className="mb-3 text-[13px] font-semibold">{error}</Text>
                 ) : null}
                 <Pressable
+                  accessibilityRole="button"
                   onPress={handleSaveGoal}
                   className="bg-charcoal rounded-full h-12 items-center justify-center active:opacity-85"
                 >
@@ -424,11 +449,12 @@ export default function SavingsGoalsScreen() {
                 </Pressable>
                 {sheet?.kind === 'edit' ? (
                   <Pressable
+                    accessibilityRole="button"
                     onPress={handleDeleteGoal}
                     className="mt-3 h-11 flex-row items-center justify-center gap-2 active:opacity-70"
                   >
-                    <Trash2 size={16} color="#B85318" strokeWidth={2} />
-                    <Text className="text-[15px] font-semibold text-[#B85318]">
+                    <Trash2 size={16} color="#C2410C" strokeWidth={2} />
+                    <Text style={{ color: '#C2410C' }} className="text-[15px] font-semibold">
                       Delete goal
                     </Text>
                   </Pressable>

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, BackHandler, Keyboard, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NoxSleepingMascot } from '@/components/NoxMascot';
 import { PinPad } from '@/components/PinPad';
@@ -46,6 +46,8 @@ export function LockOverlay({ suppressAutoBiometrics = false }: LockOverlayProps
 
   useEffect(() => {
     mountedRef.current = true;
+    // Screens stay mounted underneath; don't leave their keyboard open over the lock.
+    Keyboard.dismiss();
     return () => {
       mountedRef.current = false;
       cancelBiometrics();
@@ -171,7 +173,7 @@ export function LockOverlay({ suppressAutoBiometrics = false }: LockOverlayProps
           onComplete={handleComplete}
           onBiometric={biometricsAvailable ? tryBiometrics : undefined}
           footer={
-            <Pressable onPress={handleForgot} className="mt-7 py-2 items-center active:opacity-60">
+            <Pressable accessibilityRole="button" onPress={handleForgot} className="mt-7 py-2 items-center active:opacity-60">
               <Text className="text-[14.5px] font-semibold text-charcoal">Forgot PIN?</Text>
             </Pressable>
           }

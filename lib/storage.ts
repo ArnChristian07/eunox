@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export const STORAGE_KEYS = {
   onboarding: 'eunox.onboarding.v1',
   budget: 'eunox.budget.v1',
+  tour: 'eunox.tour.v1',
 } as const;
 
 export type StorageLoadResult<T> =

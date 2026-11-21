@@ -138,9 +138,10 @@ export default function OnboardingCurrencyScreen() {
         </Text>
 
         {/* Search Input */}
-        <View className="mt-5 flex-row items-center bg-white border border-warm-border rounded-2xl px-3.5 h-12">
+        <View className="mt-5 flex-row items-center bg-white border border-muted-gray rounded-2xl px-3.5 h-12">
           <Search size={18} color="#8A8880" strokeWidth={2} />
           <TextInput
+            accessibilityLabel="Search currencies"
             value={query}
             onChangeText={setQuery}
             placeholder="Search currencies"

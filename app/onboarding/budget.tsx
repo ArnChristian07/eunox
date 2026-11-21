@@ -17,10 +17,12 @@ import {
   StarterMode,
   useOnboarding,
 } from '@/context/OnboardingContext';
+import { useTour } from '@/context/TourContext';
 
 const MONTH_START_OPTIONS: MonthStartOption[] = ['1st', '15th', 'Last day'];
 
-const MAX_BUDGET_DIGITS = 12;
+// Matches MAX_MONEY_AMOUNT (999,999,999.99).
+const MAX_BUDGET_DIGITS = 9;
 
 const STARTER_OPTIONS: {
   id: StarterMode;
@@ -39,10 +41,22 @@ const STARTER_OPTIONS: {
   },
 ];
 
+/**
+ * Live-formats the budget as "1,500.50". The field always shows "," for thousands and
+ * "." for decimals, so a "," or "." typed at the end (decimal-pad keyboards type "," in
+ * many locales) starts the decimal part.
+ */
 function formatNumberWithCommas(raw: string): string {
-  const digits = raw.replace(/[^0-9]/g, '').replace(/^0+/, '').slice(0, MAX_BUDGET_DIGITS);
-  if (!digits) return '';
-  return Number(digits).toLocaleString('en-US');
+  let text = raw.replace(/[^0-9.,]/g, '');
+  if (/[.,]$/.test(text) && !text.slice(0, -1).includes('.')) {
+    text = `${text.slice(0, -1)}.`;
+  }
+  const [intRaw, ...decParts] = text.replace(/,/g, '').split('.');
+  const intDigits = intRaw.replace(/^0+/, '').slice(0, MAX_BUDGET_DIGITS);
+  const intFormatted = intDigits ? Number(intDigits).toLocaleString('en-US') : '';
+  if (decParts.length === 0) return intFormatted;
+  const dec = decParts.join('').slice(0, 2);
+  return `${intFormatted || '0'}.${dec}`;
 }
 
 export default function OnboardingBudgetScreen() {
@@ -57,6 +71,7 @@ export default function OnboardingBudgetScreen() {
     setStarterMode,
     completeOnboarding,
   } = useOnboarding();
+  const { requestTour } = useTour();
 
   const isEditing = hasCompletedOnboarding;
   const [draftBudget, setDraftBudget] = useState(monthlyBudget);
@@ -86,6 +101,8 @@ export default function OnboardingBudgetScreen() {
 
   const exitOnboardingToTabs = () => {
     completeOnboarding();
+    // Point out the app's features once Home appears.
+    requestTour();
     if (router.canDismiss()) {
       router.dismissAll();
     }
@@ -163,12 +180,13 @@ export default function OnboardingBudgetScreen() {
                     {selectedCurrency.symbol}
                   </Text>
                   <TextInput
+                    accessibilityLabel={`Monthly budget in ${selectedCurrency.symbol}`}
                     value={activeBudget}
                     onChangeText={handleBudgetChange}
-                    keyboardType="numeric"
+                    keyboardType="decimal-pad"
                     maxLength={15}
                     placeholder="0"
-                    placeholderTextColor="#B5B2A8"
+                    placeholderTextColor="#8A8880"
                     className="flex-1 text-[30px] font-bold text-charcoal p-0"
                   />
                 </View>
@@ -223,7 +241,6 @@ export default function OnboardingBudgetScreen() {
 
             {!isEditing ? (
               <>
-                {/* Start With */}
                 <Text className="mt-5 mb-2.5 text-[15px] font-semibold text-charcoal">
                   Start with
                 </Text>
@@ -252,8 +269,6 @@ export default function OnboardingBudgetScreen() {
                     );
                   })}
                 </View>
-
-                {/* Nox Suggestion Callout */}
                 <View className="mt-4 flex-row items-center bg-warm-stone rounded-2xl p-3.5 gap-3">
                   <NoxMiniIcon size={28} />
                   <Text className="flex-1 text-[13px] leading-[18px] text-warm-gray">
@@ -265,7 +280,6 @@ export default function OnboardingBudgetScreen() {
             ) : null}
           </ScrollView>
 
-          {/* Bottom Actions */}
           <View className="pt-4">
             <Pressable
               onPress={handleFinish}
@@ -276,7 +290,6 @@ export default function OnboardingBudgetScreen() {
                 {isEditing ? 'Save changes' : 'Finish setup'}
               </Text>
             </Pressable>
-
             {!isEditing ? (
               <Pressable
                 onPress={handleSkip}

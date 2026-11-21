@@ -86,6 +86,7 @@ export default function TransactionsScreen() {
         <View className="flex-row items-center justify-between pt-2 pb-4">
           <View className="flex-row items-center gap-3">
             <Pressable
+              accessibilityRole="button"
               onPress={() => router.back()}
               accessibilityLabel="Back"
               className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
@@ -98,6 +99,7 @@ export default function TransactionsScreen() {
           </View>
 
           <Pressable
+            accessibilityRole="button"
             onPress={cycleMonth}
             accessibilityLabel="Change month"
             className="flex-row items-center gap-1 bg-white border border-warm-border rounded-full px-3.5 py-2 active:opacity-75"
@@ -110,9 +112,10 @@ export default function TransactionsScreen() {
         </View>
 
         {/* Search Input */}
-        <View className="flex-row items-center bg-white border border-warm-border rounded-2xl px-3.5 h-12">
+        <View className="flex-row items-center bg-white border border-muted-gray rounded-2xl px-3.5 h-12">
           <Search size={18} color="#8A8880" strokeWidth={2} />
           <TextInput
+            accessibilityLabel="Search transactions"
             value={query}
             onChangeText={setQuery}
             placeholder="Search notes, categories, amounts"
@@ -133,6 +136,7 @@ export default function TransactionsScreen() {
             const active = filter === tab.id;
             return (
               <Pressable
+                accessibilityRole="button"
                 key={tab.id}
                 onPress={() => setFilter(tab.id)}
                 className={`rounded-full px-4 py-2 border ${
@@ -188,6 +192,7 @@ export default function TransactionsScreen() {
                   const letter = tx.category.charAt(0).toUpperCase();
                   return (
                     <Pressable
+                      accessibilityRole="button"
                       key={tx.id}
                       onPress={() =>
                         router.push({

@@ -4,6 +4,7 @@ import { useOnboarding } from '@/context/OnboardingContext';
 import { formatRelativeDay, getGreeting } from '@/lib/dates';
 import { formatMoney } from '@/lib/format';
 import { getHomeInsight } from '@/lib/nox';
+import { TourTarget, useTourScreen } from '@/components/TourTarget';
 import { Redirect, router } from 'expo-router';
 import {
   ArrowDownLeft,
@@ -37,6 +38,8 @@ function getCategoryIcon(category: string) {
   }
 }
 
+const HIDDEN_AMOUNT = (sym: string) => `${sym}••••`;
+
 export default function HomeScreen() {
   const { hasCompletedOnboarding, selectedCurrency } = useOnboarding();
   const budget = useBudget();
@@ -54,6 +57,8 @@ export default function HomeScreen() {
   } = budget;
 
   const [revealBalance, setRevealBalance] = useState(false);
+  // The tutorial starts here after setup (or "Replay tutorial" in Settings).
+  useTourScreen('home');
 
   if (!hasCompletedOnboarding) {
     return <Redirect href="/onboarding" />;
@@ -69,6 +74,7 @@ export default function HomeScreen() {
   const spentPercent = hasBudget
     ? Math.min(100, Math.round((totalSpent / totalBudget) * 100))
     : 0;
+  // Hides every amount on Home (hero, progress line, safe-to-spend, insight, recent list).
   const amountsHidden = hideAmountsOnHome && !revealBalance;
   const insight =
     noxSuggestionsEnabled && !isEmpty
@@ -96,6 +102,7 @@ export default function HomeScreen() {
           <View className="flex-row items-center gap-2.5">
             {!isEmpty ? (
               <Pressable
+                accessibilityRole="button"
                 onPress={() => router.push('/transactions')}
                 accessibilityLabel="Search transactions"
                 className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
@@ -103,17 +110,21 @@ export default function HomeScreen() {
                 <Search size={19} color="#141413" strokeWidth={2} />
               </Pressable>
             ) : null}
-            <Pressable
-              onPress={() => router.push('/settings')}
-              accessibilityLabel="Settings"
-              className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
-            >
-              <SlidersHorizontal size={19} color="#141413" strokeWidth={2} />
-            </Pressable>
+            <TourTarget id="home-settings">
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push('/settings')}
+                accessibilityLabel="Settings"
+                className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
+              >
+                <SlidersHorizontal size={19} color="#141413" strokeWidth={2} />
+              </Pressable>
+            </TourTarget>
           </View>
         </View>
 
         {/* Hero Dark Card */}
+        <TourTarget id="home-balance">
         <Animated.View
           entering={FadeInDown.duration(280)}
           className="bg-charcoal rounded-3xl p-5"
@@ -123,6 +134,7 @@ export default function HomeScreen() {
           </Text>
 
           <Pressable
+            accessibilityRole="button"
             onPress={() => {
               if (hideAmountsOnHome) setRevealBalance((prev) => !prev);
             }}
@@ -153,6 +165,8 @@ export default function HomeScreen() {
                 ? 'No monthly budget set'
                 : totalSpent === 0
                 ? 'Nothing spent yet'
+                : amountsHidden
+                ? `${HIDDEN_AMOUNT(sym)} spent`
                 : `${formatMoney(totalSpent, sym)} spent of ${formatMoney(totalBudget, sym, 0)}`}
             </Text>
             <Text className="text-[12.5px] text-[#A8A69E]">
@@ -168,12 +182,13 @@ export default function HomeScreen() {
                   Safe to spend today
                 </Text>
                 <Text className="text-[17px] font-bold text-nox-lime">
-                  {formatMoney(safeToSpendToday, sym, 0)}
+                  {amountsHidden ? HIDDEN_AMOUNT(sym) : formatMoney(safeToSpendToday, sym, 0)}
                 </Text>
               </View>
             </>
           ) : (
             <Pressable
+              accessibilityRole="button"
               onPress={() => router.push('/onboarding/budget')}
               className="mt-4 self-start bg-white/10 border border-white/20 rounded-full px-3.5 py-1.5 active:opacity-75"
             >
@@ -183,6 +198,7 @@ export default function HomeScreen() {
             </Pressable>
           )}
         </Animated.View>
+        </TourTarget>
 
         {isEmpty ? (
           <View className="items-center justify-center mt-16 px-4">
@@ -195,6 +211,7 @@ export default function HomeScreen() {
               &ldquo;coffee 120&rdquo; and Nox fills in the rest.
             </Text>
             <Pressable
+              accessibilityRole="button"
               onPress={() => router.push('/add-transaction')}
               className="mt-6 bg-charcoal rounded-full px-6 py-3.5 flex-row items-center gap-2 active:opacity-85"
             >
@@ -217,9 +234,12 @@ export default function HomeScreen() {
                     Nox noticed
                   </Text>
                   <Text className="mt-1 text-[14.5px] leading-[20px] text-charcoal">
-                    {insight}
+                    {amountsHidden
+                      ? 'Amounts are hidden. Tap your balance to show them.'
+                      : insight}
                   </Text>
                   <Pressable
+                    accessibilityRole="button"
                     onPress={() => router.push('/(tabs)/nox')}
                     className="mt-2.5 self-start active:opacity-70"
                   >
@@ -232,10 +252,11 @@ export default function HomeScreen() {
             ) : null}
 
             {/* Recent Transactions */}
-            <View className="mt-6">
+            <TourTarget id="home-recent" className="mt-6">
               <View className="flex-row items-center justify-between mb-3">
                 <Text className="text-[18px] font-bold text-charcoal">Recent</Text>
                 <Pressable
+                  accessibilityRole="button"
                   onPress={() => router.push('/transactions')}
                   className="active:opacity-70"
                 >
@@ -254,6 +275,7 @@ export default function HomeScreen() {
 
                   return (
                     <Pressable
+                      accessibilityRole="button"
                       key={tx.id}
                       onPress={() =>
                         router.push({
@@ -289,13 +311,13 @@ export default function HomeScreen() {
 
                       <Text className="text-[15px] font-semibold text-charcoal">
                         {isIncome ? '+' : '-'}
-                        {formatMoney(tx.amount, sym)}
+                        {amountsHidden ? HIDDEN_AMOUNT(sym) : formatMoney(tx.amount, sym)}
                       </Text>
                     </Pressable>
                   );
                 })}
               </View>
-            </View>
+            </TourTarget>
           </>
         )}
       </ScrollView>

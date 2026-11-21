@@ -1,4 +1,6 @@
 import { NoxChatMascot, NoxHomeAvatar, NoxThinkingIcon } from '@/components/NoxMascot';
+import { TourTarget, useTourScreen } from '@/components/TourTarget';
+import { useTour } from '@/context/TourContext';
 import { useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
 import { answerQuestion, NoxReply } from '@/lib/nox';
@@ -79,6 +81,8 @@ export default function NoxChatScreen() {
   const [isThinking, setIsThinking] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [savedGoalMessageIds, setSavedGoalMessageIds] = useState<string[]>([]);
+  useTourScreen('nox');
+  const { signal: tourSignal } = useTour();
 
   useEffect(
     () => () => {
@@ -114,6 +118,7 @@ export default function NoxChatScreen() {
     if (isThinking) return;
     const trimmed = (textToSend ?? input).trim();
     if (!trimmed) return;
+    tourSignal('nox-asked');
 
     const userId = nextIdRef.current++;
     const noxId = nextIdRef.current++;
@@ -187,6 +192,7 @@ export default function NoxChatScreen() {
 
           {!isThinking && messages.length > 0 ? (
             <Pressable
+              accessibilityRole="button"
               onPress={() => setMessages([])}
               accessibilityLabel="New chat"
               className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
@@ -266,6 +272,7 @@ export default function NoxChatScreen() {
                 {msg.goal ? (
                   <View className="flex-row gap-2.5 mt-4">
                     <Pressable
+                      accessibilityRole="button"
                       onPress={() => handleSaveGoal(msg)}
                       className={`rounded-2xl px-4 py-2.5 ${
                         savedGoalMessageIds.includes(msg.id)
@@ -308,7 +315,7 @@ export default function NoxChatScreen() {
         </ScrollView>
 
         {/* Suggestions & Input */}
-        <View className="px-5 pt-2 pb-2">
+        <TourTarget id="nox-ask" className="px-5 pt-2 pb-2">
           {!isThinking ? (
             <ScrollView
               horizontal
@@ -317,6 +324,7 @@ export default function NoxChatScreen() {
             >
               {SUGGESTIONS.map((s) => (
                 <Pressable
+                  accessibilityRole="button"
                   key={s}
                   onPress={() => sendMessage(s)}
                   className="bg-white border border-warm-border rounded-full px-3.5 py-2 active:opacity-75"
@@ -330,8 +338,9 @@ export default function NoxChatScreen() {
           ) : null}
 
           <View className="flex-row items-center gap-2.5">
-            <View className="flex-1 bg-white border border-warm-border rounded-full px-4 h-12 justify-center">
+            <View className="flex-1 bg-white border border-muted-gray rounded-full px-4 h-12 justify-center">
               <TextInput
+                accessibilityLabel="Ask Nox a question"
                 value={input}
                 onChangeText={setInput}
                 onSubmitEditing={() => sendMessage()}
@@ -346,6 +355,7 @@ export default function NoxChatScreen() {
               />
             </View>
             <Pressable
+              accessibilityRole="button"
               onPress={isThinking ? stopThinking : () => sendMessage()}
               accessibilityLabel={isThinking ? 'Stop answering' : 'Send message'}
               className="w-12 h-12 rounded-2xl bg-charcoal items-center justify-center active:opacity-85"
@@ -357,7 +367,7 @@ export default function NoxChatScreen() {
               )}
             </Pressable>
           </View>
-        </View>
+        </TourTarget>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

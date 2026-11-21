@@ -143,6 +143,7 @@ export default function CategoriesScreen() {
         <View className="flex-row items-center justify-between pt-2 pb-4">
           <View className="flex-row items-center gap-3">
             <Pressable
+              accessibilityRole="button"
               onPress={() => router.back()}
               accessibilityLabel="Back"
               className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
@@ -155,6 +156,7 @@ export default function CategoriesScreen() {
           </View>
 
           <Pressable
+            accessibilityRole="button"
             onPress={openNewModal}
             className="flex-row items-center gap-1.5 bg-charcoal rounded-full px-4 py-2.5 active:opacity-85"
           >
@@ -174,6 +176,7 @@ export default function CategoriesScreen() {
             const active = tab === item.id;
             return (
               <Pressable
+                accessibilityRole="button"
                 key={item.id}
                 onPress={() => setTab(item.id)}
                 className={`flex-1 py-2.5 rounded-xl items-center ${
@@ -213,6 +216,7 @@ export default function CategoriesScreen() {
                 }`}
               >
                 <Pressable
+                  accessibilityRole="button"
                   onPress={() => openEditModal(cat)}
                   className="flex-row items-center gap-2.5 flex-1 pr-2 active:opacity-70"
                 >
@@ -242,6 +246,7 @@ export default function CategoriesScreen() {
 
                 <View className="flex-row items-center gap-1">
                   <Pressable
+                    accessibilityRole="button"
                     onPress={() => reorderCategory(cat.id, 'up')}
                     disabled={idx === 0}
                     accessibilityLabel={`Move ${cat.name} up`}
@@ -250,6 +255,7 @@ export default function CategoriesScreen() {
                     <ArrowUp size={14} color={idx === 0 ? '#D9D7CE' : '#66655E'} />
                   </Pressable>
                   <Pressable
+                    accessibilityRole="button"
                     onPress={() => reorderCategory(cat.id, 'down')}
                     disabled={idx === list.length - 1}
                     accessibilityLabel={`Move ${cat.name} down`}
@@ -301,7 +307,9 @@ export default function CategoriesScreen() {
               </Text>
               <Pressable
                 onPress={() => setModalVisible(false)}
+                accessibilityRole="button"
                 accessibilityLabel="Close"
+                hitSlop={4}
                 className="w-9 h-9 rounded-xl bg-white border border-warm-border items-center justify-center"
               >
                 <X size={18} color="#141413" />
@@ -322,6 +330,7 @@ export default function CategoriesScreen() {
                     setCatName(v);
                     setFormError(null);
                   }}
+                  accessibilityLabel="Category name"
                   placeholder={effectiveType === 'income' ? 'Freelance' : 'Coffee'}
                   placeholderTextColor="#8A8880"
                   className="bg-white border-[1.5px] border-charcoal rounded-2xl px-4 h-11 text-[15px] font-medium text-charcoal"
@@ -336,6 +345,7 @@ export default function CategoriesScreen() {
                   const active = modalType === t;
                   return (
                     <Pressable
+                      accessibilityRole="button"
                       key={t}
                       onPress={() => setModalType(t)}
                       className={`flex-1 py-2.5 rounded-xl items-center ${
@@ -360,12 +370,13 @@ export default function CategoriesScreen() {
                 <Text className="text-[12.5px] font-medium text-warm-gray mb-1.5">
                   Monthly limit (optional)
                 </Text>
-                <View className="flex-row items-center bg-white border border-warm-border rounded-2xl px-4 h-12 mb-4">
+                <View className="flex-row items-center bg-white border border-muted-gray rounded-2xl px-4 h-12 mb-4">
                   <Text className="text-[16px] font-bold text-charcoal mr-1">{sym}</Text>
                   <TextInput
                     value={catLimit}
                     onChangeText={setCatLimit}
-                    keyboardType="numeric"
+                    accessibilityLabel={`Monthly limit in ${sym}, optional`}
+                    keyboardType="decimal-pad"
                     placeholder="800"
                     placeholderTextColor="#8A8880"
                     className="flex-1 text-[16px] font-semibold text-charcoal"
@@ -384,19 +395,21 @@ export default function CategoriesScreen() {
                 <Switch
                   value={autoMovePast}
                   onValueChange={setAutoMovePast}
-                  trackColor={{ false: '#D9D7CE', true: '#141413' }}
+                  accessibilityLabel="Move matching past entries into this category"
+                  trackColor={{ false: '#8A8880', true: '#141413' }}
                   thumbColor="#FFFFFF"
                 />
               </View>
             ) : null}
 
             {formError ? (
-              <Text className="mb-3 text-[13px] font-semibold text-[#B85318]">
+              <Text style={{ color: '#C2410C' }} className="mb-3 text-[13px] font-semibold">
                 {formError}
               </Text>
             ) : null}
 
             <Pressable
+              accessibilityRole="button"
               onPress={handleSave}
               className="bg-charcoal rounded-full h-[52px] items-center justify-center active:opacity-85"
             >
@@ -407,11 +420,12 @@ export default function CategoriesScreen() {
 
             {editing ? (
               <Pressable
+                accessibilityRole="button"
                 onPress={handleDelete}
                 className="mt-3 h-12 flex-row items-center justify-center gap-2 active:opacity-70"
               >
-                <Trash2 size={16} color="#B85318" strokeWidth={2} />
-                <Text className="text-[15px] font-semibold text-[#B85318]">
+                <Trash2 size={16} color="#C2410C" strokeWidth={2} />
+                <Text style={{ color: '#C2410C' }} className="text-[15px] font-semibold">
                   Delete category
                 </Text>
               </Pressable>

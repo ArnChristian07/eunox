@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { CalendarClock, Check, ChevronLeft, Info, Plus, Trash2, X } from 'lucide-react-native';
+import { FieldLabel } from '@/components/FieldLabel';
 import {
   describeBillDue,
   getBillStatus,
@@ -120,6 +121,7 @@ export default function RecurringBillsScreen() {
           <View className="flex-row items-center justify-between pt-2 pb-4">
             <View className="flex-row items-center gap-3">
               <Pressable
+                accessibilityRole="button"
                 onPress={() => router.back()}
                 accessibilityLabel="Back"
                 className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
@@ -132,6 +134,7 @@ export default function RecurringBillsScreen() {
             </View>
 
             <Pressable
+              accessibilityRole="button"
               onPress={openNew}
               accessibilityLabel="Add bill"
               className="w-11 h-11 rounded-2xl bg-charcoal items-center justify-center active:opacity-85"
@@ -190,6 +193,7 @@ export default function RecurringBillsScreen() {
                 still due each month.
               </Text>
               <Pressable
+                accessibilityRole="button"
                 onPress={openNew}
                 className="mt-4 bg-charcoal rounded-full px-5 h-11 items-center justify-center active:opacity-85"
               >
@@ -202,6 +206,7 @@ export default function RecurringBillsScreen() {
               const { bill, dueDate, paid } = status;
               return (
                 <Pressable
+                  accessibilityRole="button"
                   key={bill.id}
                   onPress={() => openEdit(bill)}
                   className={`flex-row items-center justify-between py-3.5 active:opacity-80 ${
@@ -225,8 +230,9 @@ export default function RecurringBillsScreen() {
                         {bill.title}
                       </Text>
                       <Text
+                        style={!paid ? { color: '#C2410C' } : undefined}
                         className={`text-[12.5px] mt-0.5 ${
-                          paid ? 'text-warm-gray' : 'text-[#B85318]'
+                          paid ? 'text-warm-gray' : ''
                         }`}
                       >
                         {describeBillDue(status)} · {bill.wallet}
@@ -250,6 +256,7 @@ export default function RecurringBillsScreen() {
                       </View>
                     ) : (
                       <Pressable
+                        accessibilityRole="button"
                         onPress={() => markBillPaid(bill.id)}
                         className="mt-1.5 bg-nox-lime rounded-xl px-3 py-1 active:opacity-80"
                       >
@@ -296,35 +303,50 @@ export default function RecurringBillsScreen() {
               <Text className="text-[18px] font-bold text-charcoal">
                 {editing ? 'Edit bill' : 'New recurring bill'}
               </Text>
-              <Pressable onPress={() => setShowAddModal(false)}>
+              <Pressable
+                onPress={() => setShowAddModal(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                hitSlop={12}
+              >
                 <X size={20} color="#141413" />
               </Pressable>
             </View>
 
+            <FieldLabel>Bill name</FieldLabel>
             <TextInput
               value={title}
               onChangeText={setTitle}
-              placeholder="Bill name (e.g. Water bill)"
+              accessibilityLabel="Bill name"
+              placeholder="e.g. Water bill"
               placeholderTextColor="#8A8880"
-              className="bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-3"
+              className="bg-white border border-muted-gray rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-3"
             />
             <View className="flex-row gap-3 mb-3">
-              <TextInput
-                value={amount}
-                onChangeText={setAmount}
-                keyboardType="numeric"
-                placeholder={`Amount (${sym})`}
-                placeholderTextColor="#8A8880"
-                className="flex-1 bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal"
-              />
-              <TextInput
-                value={day}
-                onChangeText={setDay}
-                keyboardType="numeric"
-                placeholder="Day (1-31)"
-                placeholderTextColor="#8A8880"
-                className="w-28 bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal"
-              />
+              <View className="flex-1">
+                <FieldLabel>Amount ({sym})</FieldLabel>
+                <TextInput
+                  value={amount}
+                  onChangeText={setAmount}
+                  keyboardType="decimal-pad"
+                  accessibilityLabel={`Amount in ${sym}`}
+                  placeholder="0.00"
+                  placeholderTextColor="#8A8880"
+                  className="bg-white border border-muted-gray rounded-2xl px-4 h-12 text-[15px] text-charcoal"
+                />
+              </View>
+              <View className="w-28">
+                <FieldLabel>Due day</FieldLabel>
+                <TextInput
+                  value={day}
+                  onChangeText={setDay}
+                  keyboardType="number-pad"
+                  accessibilityLabel="Due day of the month, 1 to 31"
+                  placeholder="1-31"
+                  placeholderTextColor="#8A8880"
+                  className="bg-white border border-muted-gray rounded-2xl px-4 h-12 text-[15px] text-charcoal"
+                />
+              </View>
             </View>
 
             <Text className="text-[12.5px] font-medium text-warm-gray mb-1.5">
@@ -340,6 +362,7 @@ export default function RecurringBillsScreen() {
                 const active = wallet === w.name;
                 return (
                   <Pressable
+                    accessibilityRole="button"
                     key={w.id}
                     onPress={() => setWallet(w.name)}
                     className={`px-4 py-2.5 rounded-xl items-center border ${
@@ -359,10 +382,11 @@ export default function RecurringBillsScreen() {
             </ScrollView>
 
             {error ? (
-              <Text className="mb-3 text-[13px] font-semibold text-[#B85318]">{error}</Text>
+              <Text style={{ color: '#C2410C' }} className="mb-3 text-[13px] font-semibold">{error}</Text>
             ) : null}
 
             <Pressable
+              accessibilityRole="button"
               onPress={handleSaveBill}
               className="bg-charcoal rounded-full h-12 items-center justify-center active:opacity-85"
             >
@@ -373,11 +397,12 @@ export default function RecurringBillsScreen() {
 
             {editing ? (
               <Pressable
+                accessibilityRole="button"
                 onPress={handleDelete}
                 className="mt-3 h-11 flex-row items-center justify-center gap-2 active:opacity-70"
               >
-                <Trash2 size={16} color="#B85318" strokeWidth={2} />
-                <Text className="text-[15px] font-semibold text-[#B85318]">Delete bill</Text>
+                <Trash2 size={16} color="#C2410C" strokeWidth={2} />
+                <Text style={{ color: '#C2410C' }} className="text-[15px] font-semibold">Delete bill</Text>
               </Pressable>
             ) : null}
             </ScrollView>

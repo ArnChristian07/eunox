@@ -9,6 +9,8 @@ import {
 import { useEffect, useState } from 'react';
 import { Keyboard, Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TourTarget } from '@/components/TourTarget';
+import type { TourTargetId } from '@/context/TourContext';
 
 interface FloatingTabBarProps {
   state: {
@@ -26,6 +28,12 @@ const TAB_CONFIG: Record<
   budgets: { label: 'Budgets', icon: PieChart },
   insights: { label: 'Insights', icon: BarChart2 },
   nox: { label: 'Nox', icon: MessageSquare },
+};
+
+const TAB_TOUR_IDS: Record<string, TourTargetId | undefined> = {
+  budgets: 'tab-budgets',
+  insights: 'tab-insights',
+  nox: 'tab-nox',
 };
 
 export function FloatingTabBar({ state, navigateToTab }: FloatingTabBarProps) {
@@ -56,9 +64,9 @@ export function FloatingTabBar({ state, navigateToTab }: FloatingTabBarProps) {
 
     const isFocused = state.index === index;
     const Icon = config.icon;
-    const color = isFocused ? '#141413' : '#7D7B73';
+    const color = isFocused ? '#141413' : '#66655E';
 
-    return (
+    const tab = (
       <Pressable
         key={route.key}
         onPress={() => navigateToTab(route.key)}
@@ -69,12 +77,21 @@ export function FloatingTabBar({ state, navigateToTab }: FloatingTabBarProps) {
         <Icon size={20} color={color} strokeWidth={isFocused ? 2.2 : 1.75} />
         <Text
           className={`text-[11px] mt-1 ${
-            isFocused ? 'font-bold text-charcoal' : 'font-medium text-[#7D7B73]'
+            isFocused ? 'font-bold text-charcoal' : 'font-medium text-[#66655E]'
           }`}
         >
           {config.label}
         </Text>
       </Pressable>
+    );
+
+    const tourId = TAB_TOUR_IDS[route.name];
+    return tourId ? (
+      <TourTarget key={route.key} id={tourId} className="flex-1">
+        {tab}
+      </TourTarget>
+    ) : (
+      tab
     );
   };
 
@@ -90,14 +107,16 @@ export function FloatingTabBar({ state, navigateToTab }: FloatingTabBarProps) {
       <View className="flex-row items-center bg-white border border-warm-border rounded-full px-2 py-2 shadow-sm">
         {leftRoutes.map((route, i) => renderTab(route, i))}
 
-        <Pressable
-          onPress={() => router.push('/add-transaction')}
-          accessibilityRole="button"
-          accessibilityLabel="Add transaction"
-          className="w-14 h-12 rounded-2xl bg-charcoal items-center justify-center mx-1 active:opacity-85"
-        >
-          <Plus size={24} color="#FFFFFF" strokeWidth={2.2} />
-        </Pressable>
+        <TourTarget id="tab-add" className="mx-1">
+          <Pressable
+            onPress={() => router.push('/add-transaction')}
+            accessibilityRole="button"
+            accessibilityLabel="Add transaction"
+            className="w-14 h-12 rounded-2xl bg-charcoal items-center justify-center active:opacity-85"
+          >
+            <Plus size={24} color="#FFFFFF" strokeWidth={2.2} />
+          </Pressable>
+        </TourTarget>
 
         {rightRoutes.map((route, i) => renderTab(route, i + 2))}
       </View>

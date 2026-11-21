@@ -23,11 +23,28 @@ import {
 /** Coming back after this long in the background asks for the PIN again. */
 const RELOCK_AFTER_MS = 30_000;
 
-/** Monotonic clock immune to device wall-clock tampering while backgrounded. */
+interface BackgroundStamp {
+  wall: number;
+  mono: number;
+}
+
+/** Monotonic clock immune to device wall-clock changes while backgrounded. */
 function monotonicNow(): number {
   return typeof performance !== 'undefined' && typeof performance.now === 'function'
     ? performance.now()
     : Date.now();
+}
+
+/**
+ * The monotonic clock pauses while the phone sleeps on Android and iOS, so it alone
+ * would let a phone left asleep overnight reopen unlocked. The wall clock keeps running
+ * during sleep but can be changed by the user. Relock when either clock says the app
+ * was away too long, and also when the wall clock went backwards (fail closed).
+ */
+function awayTooLong(since: BackgroundStamp): boolean {
+  const wallElapsed = Date.now() - since.wall;
+  const monoElapsed = monotonicNow() - since.mono;
+  return wallElapsed < 0 || wallElapsed > RELOCK_AFTER_MS || monoElapsed > RELOCK_AFTER_MS;
 }
 
 interface LockContextValue {
@@ -60,7 +77,7 @@ export function LockProvider({ children }: { children: React.ReactNode }) {
   const [lockedUntil, setLockedUntil] = useState(0);
 
   const enabledRef = useRef(false);
-  const backgroundedAt = useRef<number | null>(null);
+  const backgroundedAt = useRef<BackgroundStamp | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -95,14 +112,14 @@ export function LockProvider({ children }: { children: React.ReactNode }) {
           setPrivacyShield(true);
         }
         if (state === 'background' && backgroundedAt.current === null) {
-          backgroundedAt.current = monotonicNow();
+          backgroundedAt.current = { wall: Date.now(), mono: monotonicNow() };
         }
         return;
       }
       if (state === 'active') {
         const since = backgroundedAt.current;
         backgroundedAt.current = null;
-        if (enabledRef.current && since !== null && monotonicNow() - since > RELOCK_AFTER_MS) {
+        if (enabledRef.current && since !== null && awayTooLong(since)) {
           setLocked(true);
         }
         setPrivacyShield(false);

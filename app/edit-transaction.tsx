@@ -38,6 +38,7 @@ export default function EditTransactionScreen() {
         <View className="flex-1 px-5 pt-2 justify-between pb-6">
           <View className="flex-row items-center gap-3 pt-2">
             <Pressable
+              accessibilityRole="button"
               onPress={() => router.back()}
               accessibilityLabel="Back"
               className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
@@ -54,6 +55,7 @@ export default function EditTransactionScreen() {
             </Text>
           </View>
           <Pressable
+            accessibilityRole="button"
             onPress={() => router.back()}
             className="bg-charcoal rounded-full h-[54px] items-center justify-center active:opacity-85"
           >
@@ -193,6 +195,7 @@ function EditTransactionForm({ tx }: { tx: Transaction }) {
           <View className="flex-row items-center justify-between pt-2 pb-4">
             <View className="flex-row items-center gap-3">
               <Pressable
+                accessibilityRole="button"
                 onPress={() => router.back()}
                 accessibilityLabel="Back"
                 className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
@@ -209,6 +212,7 @@ function EditTransactionForm({ tx }: { tx: Transaction }) {
                 const active = txType === t;
                 return (
                   <Pressable
+                    accessibilityRole="button"
                     key={t}
                     onPress={() => handleSwitchType(t)}
                     className={`px-3 py-1 rounded-full ${
@@ -257,6 +261,7 @@ function EditTransactionForm({ tx }: { tx: Transaction }) {
           {/* Details Card */}
           <View className="bg-white border border-warm-border rounded-3xl px-4 py-1">
             <Pressable
+              accessibilityRole="button"
               onPress={() => cycleValue(category, categoryList, setCategory)}
               className="flex-row items-center justify-between py-4 border-b border-warm-border"
             >
@@ -273,6 +278,8 @@ function EditTransactionForm({ tx }: { tx: Transaction }) {
               <Text className="text-[14.5px] text-warm-gray">Date</Text>
               <View className="flex-row items-center gap-2">
                 <Pressable
+                  accessibilityRole="button"
+                  hitSlop={8}
                   onPress={() => stepDate(-1)}
                   accessibilityLabel="Previous day"
                   className="w-7 h-7 rounded-lg bg-[#F3F2EC] items-center justify-center active:opacity-70"
@@ -283,6 +290,8 @@ function EditTransactionForm({ tx }: { tx: Transaction }) {
                   {formatFullDate(date)}
                 </Text>
                 <Pressable
+                  accessibilityRole="button"
+                  hitSlop={8}
                   onPress={() => stepDate(1)}
                   accessibilityLabel="Next day"
                   className="w-7 h-7 rounded-lg bg-[#F3F2EC] items-center justify-center active:opacity-70"
@@ -293,6 +302,7 @@ function EditTransactionForm({ tx }: { tx: Transaction }) {
             </View>
 
             <Pressable
+              accessibilityRole="button"
               onPress={cycleWallet}
               className="flex-row items-center justify-between py-4 border-b border-warm-border"
             >
@@ -306,6 +316,7 @@ function EditTransactionForm({ tx }: { tx: Transaction }) {
             </Pressable>
 
             <Pressable
+              accessibilityRole="button"
               onPress={() => cycleValue(repeat, REPEAT_CYCLE, setRepeat)}
               className="flex-row items-center justify-between py-4 border-b border-warm-border"
             >
@@ -321,18 +332,19 @@ function EditTransactionForm({ tx }: { tx: Transaction }) {
             <View className="py-3.5">
               <Text className="text-[14px] text-warm-gray mb-2">Note</Text>
               <TextInput
+                accessibilityLabel="Note"
                 value={note}
                 onChangeText={setNote}
                 multiline
                 placeholder="Add a note..."
                 placeholderTextColor="#8A8880"
-                className="bg-[#F3F2EC] rounded-2xl px-3.5 py-3 text-[14.5px] text-charcoal min-h-[54px]"
+                className="bg-[#F3F2EC] border border-muted-gray rounded-2xl px-3.5 py-3 text-[14.5px] text-charcoal min-h-[54px]"
               />
             </View>
           </View>
 
           {error ? (
-            <Text className="mt-3 text-center text-[13px] font-semibold text-[#B85318]">
+            <Text style={{ color: '#C2410C' }} className="mt-3 text-center text-[13px] font-semibold">
               {error}
             </Text>
           ) : null}
@@ -351,6 +363,7 @@ function EditTransactionForm({ tx }: { tx: Transaction }) {
         {/* Bottom Actions */}
         <View className="pt-4">
           <Pressable
+            accessibilityRole="button"
             onPress={handleSave}
             className="bg-charcoal rounded-full h-[54px] items-center justify-center active:opacity-85"
           >
@@ -360,11 +373,12 @@ function EditTransactionForm({ tx }: { tx: Transaction }) {
           </Pressable>
 
           <Pressable
+            accessibilityRole="button"
             onPress={handleDelete}
             className="mt-4 py-2 flex-row items-center justify-center gap-2 active:opacity-70"
           >
-            <Trash2 size={16} color="#B85318" strokeWidth={2} />
-            <Text className="text-[15px] font-semibold text-[#B85318]">
+            <Trash2 size={16} color="#C2410C" strokeWidth={2} />
+            <Text style={{ color: '#C2410C' }} className="text-[15px] font-semibold">
               Delete {tx.type}
             </Text>
           </Pressable>
@@ -381,10 +395,6 @@ function EditTransactionForm({ tx }: { tx: Transaction }) {
       >
         <View className="flex-1 bg-black/45 items-center justify-center px-6">
           <View className="w-full bg-white rounded-3xl p-6">
-            <View className="w-12 h-12 rounded-2xl bg-[#FCEEE4] items-center justify-center mb-4">
-              <Trash2 size={22} color="#B85318" strokeWidth={2} />
-            </View>
-
             <Text className="text-[20px] font-bold text-charcoal">
               Delete this {tx.type}?
             </Text>
@@ -401,6 +411,7 @@ function EditTransactionForm({ tx }: { tx: Transaction }) {
 
             <View className="flex-row gap-3 mt-6">
               <Pressable
+                accessibilityRole="button"
                 onPress={() => setShowDeleteModal(false)}
                 className="flex-1 h-12 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
               >
@@ -410,10 +421,13 @@ function EditTransactionForm({ tx }: { tx: Transaction }) {
               </Pressable>
 
               <Pressable
+                accessibilityRole="button"
                 onPress={confirmDelete}
-                className="flex-1 h-12 rounded-2xl bg-[#B85318] items-center justify-center active:opacity-85"
+                // Inline colour: a stale NativeWind build must never leave this white-on-white.
+                style={{ backgroundColor: '#C2410C' }}
+                className="flex-1 h-12 rounded-2xl items-center justify-center active:opacity-85"
               >
-                <Text className="text-[15px] font-semibold text-white">
+                <Text style={{ color: '#FFFFFF' }} className="text-[15px] font-semibold">
                   Delete
                 </Text>
               </Pressable>

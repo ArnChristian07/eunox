@@ -24,6 +24,8 @@ import {
   X,
 } from 'lucide-react-native';
 import { NoxMiniIcon } from '@/components/NoxMascot';
+import { TourTarget, useTourScreen } from '@/components/TourTarget';
+import { useTour } from '@/context/TourContext';
 import { TransactionType, useBudget } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
 import { addDays, formatShortDate, toISODate } from '@/lib/dates';
@@ -31,6 +33,7 @@ import {
   formatMoney,
   isValidPositiveAmount,
   MAX_MONEY_AMOUNT,
+  parseAmount,
   roundMoney,
   splitMoneyParts,
   subMoney,
@@ -136,6 +139,13 @@ export default function AddTransactionModal() {
   const { whole: wholePart, dec: decPart } = splitMoneyParts(numericAmount);
   const txDate = dateLabel === 'Today' ? today : addDays(today, -1);
 
+  // Tutorial: report this screen and the user's progress on it.
+  useTourScreen('add');
+  const { signal: tourSignal, stepIndex: tourStep } = useTour();
+  useEffect(() => {
+    if (numericAmount > 0) tourSignal('amount-entered');
+  }, [numericAmount, tourStep, tourSignal]);
+
   const cycleFromWallet = () => {
     if (wallets.length <= 1) return;
     const idx = wallets.findIndex((w) => w.id === selectedWallet?.id);
@@ -164,13 +174,13 @@ export default function AddTransactionModal() {
   const handleQuickTextChange = (text: string) => {
     setQuickText(text);
     setFormError(null);
-    // Prefer the last number in the phrase (e.g. "2 coffees 150" -> "150").
-    const matches = text.match(/\d+(?:\.\d{1,2})?/g);
+    // Prefer the last number in the phrase (e.g. "2 coffees 150" -> "150"). Keep
+    // separators inside a number so "rent 12,000" and "lunch 12,50" parse whole.
+    const matches = text.match(/\d+(?:[.,]\d+)*/g);
     if (matches && matches.length > 0) {
-      const candidate = matches[matches.length - 1];
-      const parsed = Number(candidate);
-      if (Number.isFinite(parsed) && parsed <= MAX_MONEY_AMOUNT) {
-        setAmountStr(candidate);
+      const parsed = parseAmount(matches[matches.length - 1]);
+      if (parsed > 0 && parsed <= MAX_MONEY_AMOUNT) {
+        setAmountStr(String(parsed));
       }
     }
     const lower = text.toLowerCase();
@@ -240,6 +250,7 @@ export default function AddTransactionModal() {
       setSavedAmount(numericAmount);
       setSavedSummary(`${selectedWallet.name} → ${destinationWallet.name} · Today`);
       setSavedId('transfer');
+      tourSignal('transaction-saved');
       return;
     }
 
@@ -261,6 +272,7 @@ export default function AddTransactionModal() {
     setSavedAmount(numericAmount);
     setSavedSummary(`${effectiveCategory} · ${dateLabel} · ${selectedWallet.name}`);
     setSavedId(id);
+    tourSignal('transaction-saved');
   };
 
   const handleUndo = () => {
@@ -303,6 +315,8 @@ export default function AddTransactionModal() {
         <View className="flex-1 px-5 pt-2 pb-6 justify-between">
           <View className="items-end">
             <Pressable
+              accessibilityRole="button"
+              hitSlop={2}
               onPress={() => router.back()}
               accessibilityLabel="Close"
               className="w-10 h-10 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
@@ -353,12 +367,12 @@ export default function AddTransactionModal() {
                   <View
                     style={{ width: `${pct}%` }}
                     className={`h-full rounded-full ${
-                      pct >= 80 ? 'bg-[#D96B27]' : 'bg-charcoal'
+                      pct >= 80 ? 'bg-[#C9601F]' : 'bg-charcoal'
                     }`}
                   />
                 </View>
 
-                <Text className="mt-2 text-[12.5px] font-medium text-[#B85318]">
+                <Text style={{ color: '#C2410C' }} className="mt-2 text-[12.5px] font-medium">
                   {pct}% used · {formatMoney(remaining, sym)} left for {daysLeft} days
                 </Text>
               </View>
@@ -368,6 +382,7 @@ export default function AddTransactionModal() {
           <View>
             <View className="flex-row gap-3">
               <Pressable
+                accessibilityRole="button"
                 onPress={handleAddAnother}
                 className="flex-1 bg-white border border-warm-border rounded-full h-[52px] items-center justify-center active:opacity-75"
               >
@@ -376,17 +391,21 @@ export default function AddTransactionModal() {
                 </Text>
               </Pressable>
 
-              <Pressable
-                onPress={() => router.back()}
-                className="flex-1 bg-charcoal rounded-full h-[52px] items-center justify-center active:opacity-85"
-              >
-                <Text className="text-[15px] font-semibold text-white">
-                  Done
-                </Text>
-              </Pressable>
+              <TourTarget id="add-done" className="flex-1">
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.back()}
+                  className="bg-charcoal rounded-full h-[52px] items-center justify-center active:opacity-85"
+                >
+                  <Text className="text-[15px] font-semibold text-white">
+                    Done
+                  </Text>
+                </Pressable>
+              </TourTarget>
             </View>
 
             <Pressable
+              accessibilityRole="button"
               onPress={handleUndo}
               className="mt-4 py-2 flex-row items-center justify-center gap-1.5 active:opacity-60"
             >
@@ -414,6 +433,8 @@ export default function AddTransactionModal() {
           >
             <View className="flex-row items-center justify-between">
               <Pressable
+                accessibilityRole="button"
+                hitSlop={2}
                 onPress={() => router.back()}
                 accessibilityLabel="Close"
                 className="w-10 h-10 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
@@ -427,6 +448,7 @@ export default function AddTransactionModal() {
                     const active = txType === t;
                     return (
                       <Pressable
+                        accessibilityRole="button"
                         key={t}
                         onPress={() => {
                           setTxType(t);
@@ -450,6 +472,8 @@ export default function AddTransactionModal() {
               </View>
 
               <Pressable
+                accessibilityRole="button"
+                hitSlop={2}
                 onPress={() => router.push({ pathname: '/scan-receipt', params: { from: 'add-transaction' } } as Href)}
                 accessibilityLabel="Scan receipt"
                 className="w-10 h-10 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
@@ -478,6 +502,7 @@ export default function AddTransactionModal() {
               /* Transfer Wallet Selectors */
               <View className="mt-4 bg-white border border-warm-border rounded-3xl p-4 gap-3">
                 <Pressable
+                  accessibilityRole="button"
                   onPress={cycleFromWallet}
                   className="flex-row items-center justify-between bg-[#F3F2EC] rounded-2xl px-3.5 py-3 active:opacity-80"
                 >
@@ -497,6 +522,7 @@ export default function AddTransactionModal() {
                 </View>
 
                 <Pressable
+                  accessibilityRole="button"
                   onPress={cycleToWallet}
                   className="flex-row items-center justify-between bg-[#F3F2EC] rounded-2xl px-3.5 py-3 active:opacity-80"
                 >
@@ -525,6 +551,7 @@ export default function AddTransactionModal() {
                   </View>
 
                   <TextInput
+                    accessibilityLabel="Describe the entry, for example lunch 180 yesterday"
                     value={quickText}
                     onChangeText={handleQuickTextChange}
                     onFocus={() => setIsInputFocused(true)}
@@ -536,7 +563,7 @@ export default function AddTransactionModal() {
                         : 'e.g. lunch 180 yesterday'
                     }
                     placeholderTextColor="#8A8880"
-                    className="mt-2.5 bg-[#F3F2EC] rounded-2xl px-3.5 py-2.5 text-[14.5px] text-charcoal"
+                    className="mt-2.5 bg-[#F3F2EC] border border-muted-gray rounded-2xl px-3.5 py-2.5 text-[14.5px] text-charcoal"
                   />
 
                   <View className="flex-row items-center gap-2 mt-2.5">
@@ -559,13 +586,17 @@ export default function AddTransactionModal() {
                 </View>
 
                 {/* Category Pills */}
-                <View className="flex-row flex-wrap gap-2 mt-4">
+                <TourTarget id="add-categories" className="flex-row flex-wrap gap-2 mt-4">
                   {activeCategoryNames.map((cat) => {
                     const active = effectiveCategory === cat;
                     return (
                       <Pressable
+                        accessibilityRole="button"
                         key={cat}
-                        onPress={() => setSelectedCategory(cat)}
+                        onPress={() => {
+                          setSelectedCategory(cat);
+                          tourSignal('category-picked');
+                        }}
                         className={`rounded-full px-4 py-2 border ${
                           active
                             ? 'bg-charcoal border-charcoal'
@@ -582,11 +613,12 @@ export default function AddTransactionModal() {
                       </Pressable>
                     );
                   })}
-                </View>
+                </TourTarget>
 
                 {/* Metadata Row */}
                 <View className="flex-row items-center gap-2 mt-3.5">
                   <Pressable
+                    accessibilityRole="button"
                     onPress={() =>
                       setDateLabel((prev) =>
                         prev === 'Yesterday' ? 'Today' : 'Yesterday'
@@ -600,6 +632,7 @@ export default function AddTransactionModal() {
                     </Text>
                   </Pressable>
                   <Pressable
+                    accessibilityRole="button"
                     onPress={cycleFromWallet}
                     className="flex-row items-center gap-1.5 bg-[#EFECE4] rounded-xl px-3 py-2 active:opacity-75"
                   >
@@ -609,6 +642,7 @@ export default function AddTransactionModal() {
                     </Text>
                   </Pressable>
                   <Pressable
+                    accessibilityRole="button"
                     onPress={() => setShowNoteInput((prev) => !prev)}
                     className={`flex-row items-center gap-1.5 rounded-xl px-3 py-2 active:opacity-75 ${
                       showNoteInput || note ? 'bg-nox-lime' : 'bg-[#EFECE4]'
@@ -623,6 +657,7 @@ export default function AddTransactionModal() {
 
                 {showNoteInput ? (
                   <TextInput
+                    accessibilityLabel="Note"
                     value={note}
                     onChangeText={setNote}
                     onFocus={() => setIsInputFocused(true)}
@@ -630,14 +665,14 @@ export default function AddTransactionModal() {
                     returnKeyType="done"
                     placeholder="Add a short note..."
                     placeholderTextColor="#8A8880"
-                    className="mt-2.5 bg-white border border-warm-border rounded-2xl px-3.5 py-2.5 text-[13.5px] text-charcoal"
+                    className="mt-2.5 bg-white border border-muted-gray rounded-2xl px-3.5 py-2.5 text-[13.5px] text-charcoal"
                   />
                 ) : null}
               </>
             )}
 
             {formError ? (
-              <Text className="mt-2.5 text-center text-[13px] font-semibold text-[#B85318]">
+              <Text style={{ color: '#C2410C' }} className="mt-2.5 text-center text-[13px] font-semibold">
                 {formError}
               </Text>
             ) : null}
@@ -646,11 +681,12 @@ export default function AddTransactionModal() {
           {/* Numeric Keypad & Save CTA */}
           <View>
             {!hideCustomKeypad ? (
-              <View className="gap-2">
+              <TourTarget id="add-keypad" className="gap-2">
                 {KEYPAD_ROWS.map((row, rIdx) => (
                   <View key={rIdx} className="flex-row gap-2">
                     {row.map((key) => (
                       <Pressable
+                        accessibilityRole="button"
                         key={key}
                         onPress={() => handleKeyPress(key)}
                         className="flex-1 h-12 rounded-2xl bg-white items-center justify-center active:bg-[#EAE8E1]"
@@ -666,17 +702,20 @@ export default function AddTransactionModal() {
                     ))}
                   </View>
                 ))}
-              </View>
+              </TourTarget>
             ) : null}
 
-            <Pressable
-              onPress={handleSave}
-              className="mt-3 bg-charcoal rounded-full h-[54px] items-center justify-center active:opacity-85"
-            >
-              <Text className="text-white text-[16px] font-semibold">
-                Save {txType}
-              </Text>
-            </Pressable>
+            <TourTarget id="add-save" className="mt-3">
+              <Pressable
+                accessibilityRole="button"
+                onPress={handleSave}
+                className="bg-charcoal rounded-full h-[54px] items-center justify-center active:opacity-85"
+              >
+                <Text className="text-white text-[16px] font-semibold">
+                  Save {txType}
+                </Text>
+              </Pressable>
+            </TourTarget>
           </View>
         </View>
       </KeyboardAvoidingView>

@@ -93,8 +93,9 @@ export function PinPad({
           {title}
         </Text>
         <Text
+          style={error ? { color: '#C2410C' } : undefined}
           className={`mt-1.5 text-[14.5px] text-center ${
-            error ? 'text-[#B85318] font-semibold' : 'text-warm-gray'
+            error ? 'font-semibold' : 'text-warm-gray'
           }`}
         >
           {error || subtitle}
@@ -120,6 +121,7 @@ export function PinPad({
                 if (key === 'bio') {
                   return onBiometric ? (
                     <Pressable
+                      accessibilityRole="button"
                       key={key}
                       onPress={() => handlePress(key)}
                       accessibilityLabel="Use biometrics"
@@ -134,6 +136,7 @@ export function PinPad({
                 if (key === 'back') {
                   return (
                     <Pressable
+                      accessibilityRole="button"
                       key={key}
                       disabled={disabled}
                       onPress={() => handlePress(key)}
@@ -148,6 +151,7 @@ export function PinPad({
                 }
                 return (
                   <Pressable
+                    accessibilityRole="button"
                     key={key}
                     disabled={disabled}
                     onPress={() => handlePress(key)}

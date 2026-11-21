@@ -16,6 +16,7 @@ import {
   weekdayShort,
 } from '@/lib/dates';
 import { formatCompactNumber, formatMoney } from '@/lib/format';
+import { useTourScreen } from '@/components/TourTarget';
 
 type PeriodTab = 'Week' | 'Month' | 'Year';
 
@@ -182,6 +183,7 @@ export default function InsightsScreen() {
   const { selectedCurrency } = useOnboarding();
   const { transactions, today } = useBudget();
   const [period, setPeriod] = useState<PeriodTab>('Month');
+  useTourScreen('insights');
 
   const sym = selectedCurrency.symbol;
   const expenses = useMemo(
@@ -224,6 +226,7 @@ export default function InsightsScreen() {
                 const active = period === tab;
                 return (
                   <Pressable
+                    accessibilityRole="button"
                     key={tab}
                     onPress={() => setPeriod(tab)}
                     className={`px-3.5 py-1.5 rounded-full ${

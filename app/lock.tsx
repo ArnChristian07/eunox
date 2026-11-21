@@ -146,6 +146,7 @@ export default function LockSetupScreen() {
     <SafeAreaView className="flex-1 bg-cream">
       <View className="px-5 pt-2">
         <Pressable
+          accessibilityRole="button"
           onPress={() => router.back()}
           accessibilityLabel="Back"
           className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"

@@ -1,7 +1,7 @@
 import '../global.css';
 
 import { useFonts } from 'expo-font';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
@@ -11,10 +11,11 @@ import 'react-native-reanimated';
 import { AnimatedSplash } from '@/components/AnimatedSplash';
 import { LockOverlay } from '@/components/LockOverlay';
 import { NoxSleepingMascot } from '@/components/NoxMascot';
-import { useColorScheme } from '@/components/useColorScheme';
 import { BudgetProvider, useBudget } from '@/context/BudgetContext';
 import { LockProvider, useLock } from '@/context/LockContext';
 import { OnboardingProvider, useOnboarding } from '@/context/OnboardingContext';
+import { TourOverlay } from '@/components/TourOverlay';
+import { TourProvider } from '@/context/TourContext';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -24,6 +25,20 @@ export {
 export const unstable_settings = {
   // Ensure that reloading on `/modal` keeps a back button present.
   anchor: '(tabs)',
+};
+
+// Eunox is designed light-only (app.json sets userInterfaceStyle: "light"). The
+// navigator background matches the screens so transitions never flash grey or black.
+const EUNOX_THEME = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: '#141413',
+    background: '#F8F7F2',
+    card: '#F8F7F2',
+    text: '#141413',
+    border: '#E4E2DA',
+  },
 };
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
@@ -47,7 +62,9 @@ export default function RootLayout() {
     <OnboardingProvider>
       <BudgetProvider>
         <LockProvider>
-          <RootLayoutNav />
+          <TourProvider>
+            <RootLayoutNav />
+          </TourProvider>
         </LockProvider>
       </BudgetProvider>
     </OnboardingProvider>
@@ -55,7 +72,6 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
   const {
     hydrated: onboardingHydrated,
     storageError: onboardingStorageError,
@@ -114,18 +130,25 @@ function RootLayoutNav() {
   return (
     <>
       <StatusBar style="dark" />
-      {isLocked ? (
-        <LockOverlay suppressAutoBiometrics={showSplash} />
-      ) : (
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      {/* The navigator stays mounted while locked so relocking (e.g. after >30s in the
+          file picker or share sheet) keeps the user's screens and unsaved input. The
+          lock screen covers it, and it's hidden from screen readers meanwhile. */}
+      <View
+        style={{ flex: 1 }}
+        importantForAccessibility={isLocked ? 'no-hide-descendants' : 'auto'}
+        accessibilityElementsHidden={isLocked}
+      >
+        <ThemeProvider value={EUNOX_THEME}>
           <Stack screenOptions={{ headerShown: false }}>
             {/* Explicit redirectTo: without it, Expo Router falls back to the first
                 unguarded route alphabetically (`backup`) on a fresh install. */}
             <Stack.Protected guard={hasCompletedOnboarding} redirectTo="/onboarding">
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              {/* Not native modals: iOS presents those above the root view, where the
+                  lock screen and privacy curtain can't cover them. */}
               <Stack.Screen
                 name="add-transaction"
-                options={{ presentation: 'modal', headerShown: false }}
+                options={{ animation: 'slide_from_bottom', headerShown: false }}
               />
               <Stack.Screen name="transactions" options={{ headerShown: false }} />
               <Stack.Screen name="edit-transaction" options={{ headerShown: false }} />
@@ -136,7 +159,11 @@ function RootLayoutNav() {
               <Stack.Screen name="recurring-bills" options={{ headerShown: false }} />
               <Stack.Screen
                 name="scan-receipt"
-                options={{ presentation: 'fullScreenModal', headerShown: false }}
+                options={{
+                  animation: 'slide_from_bottom',
+                  gestureEnabled: false,
+                  headerShown: false,
+                }}
               />
               <Stack.Screen name="lock" options={{ headerShown: false }} />
             </Stack.Protected>
@@ -148,7 +175,10 @@ function RootLayoutNav() {
             <Stack.Screen name="backup" options={{ headerShown: false }} />
           </Stack>
         </ThemeProvider>
-      )}
+      </View>
+      {/* Above the app, below the lock screen, privacy curtain and splash. */}
+      {!isLocked ? <TourOverlay /> : null}
+      {isLocked ? <LockOverlay suppressAutoBiometrics={showSplash} /> : null}
       {showPrivacyCurtain ? (
         <Modal
           visible

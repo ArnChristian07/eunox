@@ -25,6 +25,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react-native';
+import { FieldLabel } from '@/components/FieldLabel';
 import { TransferRecord, useBudget, WalletItem } from '@/context/BudgetContext';
 import { useOnboarding } from '@/context/OnboardingContext';
 import { formatShortDate, parseISODate } from '@/lib/dates';
@@ -195,6 +196,7 @@ export default function WalletsScreen() {
           {/* Header */}
           <View className="flex-row items-center gap-3 pt-2 pb-4">
             <Pressable
+              accessibilityRole="button"
               onPress={() => router.back()}
               accessibilityLabel="Back"
               className="w-11 h-11 rounded-2xl bg-white border border-warm-border items-center justify-center active:opacity-75"
@@ -208,7 +210,7 @@ export default function WalletsScreen() {
 
           {storageError ? (
             <View className="mb-4 bg-[#FCEEE4] border border-[#E5B89B] rounded-2xl px-4 py-3">
-              <Text className="text-[13px] font-semibold text-[#B85318]">
+              <Text style={{ color: '#C2410C' }} className="text-[13px] font-semibold">
                 {storageError}
               </Text>
             </View>
@@ -232,6 +234,7 @@ export default function WalletsScreen() {
           {/* Action Buttons */}
           <View className="flex-row gap-3 mt-4 mb-5">
             <Pressable
+              accessibilityRole="button"
               onPress={() => {
                 if (wallets.length < 2) {
                   Alert.alert('Add another wallet', 'Transfers need at least two wallets.');
@@ -252,6 +255,7 @@ export default function WalletsScreen() {
             </Pressable>
 
             <Pressable
+              accessibilityRole="button"
               onPress={openAddWallet}
               className="flex-1 bg-white border border-warm-border rounded-2xl h-12 flex-row items-center justify-center gap-1.5 active:opacity-75"
             >
@@ -272,6 +276,7 @@ export default function WalletsScreen() {
                   entering={FadeInDown.delay(idx * 60).duration(280)}
                 >
                 <Pressable
+                  accessibilityRole="button"
                   onPress={() => openEditWallet(w)}
                   className="bg-white border border-warm-border rounded-3xl p-4 flex-row items-center justify-between active:opacity-85"
                 >
@@ -296,8 +301,9 @@ export default function WalletsScreen() {
                   </View>
 
                   <Text
+                    style={w.balance < 0 ? { color: '#C2410C' } : undefined}
                     className={`text-[15.5px] font-bold ${
-                      w.balance < 0 ? 'text-[#B85318]' : 'text-charcoal'
+                      w.balance < 0 ? '' : 'text-charcoal'
                     }`}
                   >
                     {formatMoney(w.balance, sym)}
@@ -320,6 +326,7 @@ export default function WalletsScreen() {
           <View className="gap-3">
             {(showAllTransfers ? transfers : transfers.slice(0, 20)).map((tr) => (
               <Pressable
+                accessibilityRole="button"
                 key={tr.id}
                 onPress={() => confirmDeleteTransfer(tr)}
                 accessibilityHint="Undo this transfer"
@@ -341,6 +348,7 @@ export default function WalletsScreen() {
           </View>
           {transfers.length > 20 ? (
             <Pressable
+              accessibilityRole="button"
               onPress={() => setShowAllTransfers((prev) => !prev)}
               className="mt-3 py-2 items-center active:opacity-70"
             >
@@ -383,43 +391,57 @@ export default function WalletsScreen() {
               <Text className="text-[18px] font-bold text-charcoal">
                 {editingWallet ? 'Edit wallet' : 'Add wallet'}
               </Text>
-              <Pressable onPress={() => setShowAddModal(false)}>
+              <Pressable
+                onPress={() => setShowAddModal(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                hitSlop={12}
+              >
                 <X size={20} color="#141413" />
               </Pressable>
             </View>
 
+            <FieldLabel>Wallet name</FieldLabel>
             <TextInput
               value={newName}
               onChangeText={(v) => {
                 setNewName(v);
                 setWalletError(null);
               }}
-              placeholder="Wallet name (e.g. Travel fund)"
+              accessibilityLabel="Wallet name"
+              placeholder="e.g. Travel fund"
               placeholderTextColor="#8A8880"
-              className="bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-3"
+              className="bg-white border border-muted-gray rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-3"
             />
+            <FieldLabel>Note (optional)</FieldLabel>
             <TextInput
               value={newSubtitle}
               onChangeText={setNewSubtitle}
-              placeholder="Note (optional)"
+              accessibilityLabel="Note, optional"
+              placeholder="e.g. BPI savings"
               placeholderTextColor="#8A8880"
-              className="bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-3"
+              className="bg-white border border-muted-gray rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-3"
             />
             {editingWallet ? null : (
-              <TextInput
-                value={newBalance}
-                onChangeText={setNewBalance}
-                keyboardType="numeric"
-                placeholder={`Starting balance (${sym}0)`}
-                placeholderTextColor="#8A8880"
-                className="bg-white border border-warm-border rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-4"
-              />
+              <>
+                <FieldLabel>Starting balance ({sym})</FieldLabel>
+                <TextInput
+                  value={newBalance}
+                  onChangeText={setNewBalance}
+                  keyboardType="numbers-and-punctuation"
+                  accessibilityLabel={`Starting balance in ${sym}`}
+                  placeholder="0"
+                  placeholderTextColor="#8A8880"
+                  className="bg-white border border-muted-gray rounded-2xl px-4 h-12 text-[15px] text-charcoal mb-4"
+                />
+              </>
             )}
             {editingWallet ? <View className="h-1" /> : null}
 
             <View className="flex-row gap-2 mb-5">
               {(['cash', 'ewallet', 'bank'] as const).map((t) => (
                 <Pressable
+                  accessibilityRole="button"
                   key={t}
                   onPress={() => setNewType(t)}
                   className={`flex-1 py-2.5 rounded-xl items-center border ${
@@ -440,12 +462,13 @@ export default function WalletsScreen() {
             </View>
 
             {walletError ? (
-              <Text className="mb-3 text-[13px] font-semibold text-[#B85318]">
+              <Text style={{ color: '#C2410C' }} className="mb-3 text-[13px] font-semibold">
                 {walletError}
               </Text>
             ) : null}
 
             <Pressable
+              accessibilityRole="button"
               onPress={handleSaveWallet}
               className="bg-charcoal rounded-full h-12 items-center justify-center active:opacity-85"
             >
@@ -458,6 +481,7 @@ export default function WalletsScreen() {
               <View className="flex-row gap-3 mt-3">
                 {!editingWallet.isDefault ? (
                   <Pressable
+                    accessibilityRole="button"
                     onPress={() => {
                       setDefaultWallet(editingWallet.id);
                       setShowAddModal(false);
@@ -469,11 +493,12 @@ export default function WalletsScreen() {
                   </Pressable>
                 ) : null}
                 <Pressable
+                  accessibilityRole="button"
                   onPress={handleDeleteWallet}
                   className="flex-1 h-11 rounded-full flex-row items-center justify-center gap-1.5 active:opacity-70"
                 >
-                  <Trash2 size={15} color="#B85318" strokeWidth={2} />
-                  <Text className="text-[14px] font-semibold text-[#B85318]">Delete</Text>
+                  <Trash2 size={15} color="#C2410C" strokeWidth={2} />
+                  <Text style={{ color: '#C2410C' }} className="text-[14px] font-semibold">Delete</Text>
                 </Pressable>
               </View>
             ) : null}
@@ -506,6 +531,9 @@ export default function WalletsScreen() {
               </Text>
               <Pressable
                 onPress={() => setShowTransferModal(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                hitSlop={4}
                 className="w-9 h-9 rounded-xl bg-white border border-warm-border items-center justify-center"
               >
                 <X size={18} color="#141413" />
@@ -515,6 +543,7 @@ export default function WalletsScreen() {
             {/* From / To Stacked Cards with Swap Button */}
             <View className="relative">
               <Pressable
+                accessibilityRole="button"
                 onPress={() => cycleWallet(fromId, setFromId)}
                 className="bg-white border border-warm-border rounded-2xl px-4 py-3.5 flex-row items-center justify-between"
               >
@@ -534,6 +563,7 @@ export default function WalletsScreen() {
               </Pressable>
 
               <Pressable
+                accessibilityRole="button"
                 onPress={() => cycleWallet(toId, setToId)}
                 className="mt-2 bg-white border border-warm-border rounded-2xl px-4 py-3.5 flex-row items-center justify-between"
               >
@@ -554,7 +584,9 @@ export default function WalletsScreen() {
 
               <Pressable
                 onPress={swapWallets}
+                accessibilityRole="button"
                 accessibilityLabel="Swap wallets"
+                hitSlop={4}
                 className="absolute right-6 top-1/2 -mt-4 w-9 h-9 rounded-full bg-charcoal items-center justify-center border-2 border-cream"
               >
                 <ArrowUpDown size={15} color="#FFFFFF" strokeWidth={2.2} />
@@ -571,9 +603,10 @@ export default function WalletsScreen() {
                 <TextInput
                   value={transferAmount}
                   onChangeText={setTransferAmount}
-                  keyboardType="numeric"
+                  keyboardType="decimal-pad"
+                  accessibilityLabel={`Transfer amount in ${sym}`}
                   placeholder="0"
-                  placeholderTextColor="#B5B2A8"
+                  placeholderTextColor="#8A8880"
                   className="text-[34px] font-bold text-charcoal min-w-[80px] text-center p-0"
                 />
               </View>
@@ -585,6 +618,7 @@ export default function WalletsScreen() {
                 const active = transferAmount === preset;
                 return (
                   <Pressable
+                    accessibilityRole="button"
                     key={preset}
                     onPress={() => setTransferAmount(preset)}
                     className={`rounded-full px-4 py-2 border ${
@@ -605,6 +639,7 @@ export default function WalletsScreen() {
                 );
               })}
               <Pressable
+                accessibilityRole="button"
                 disabled={(fromWallet?.balance ?? 0) <= 0}
                 onPress={() => {
                   const bal = fromWallet?.balance ?? 0;
@@ -624,8 +659,9 @@ export default function WalletsScreen() {
             </View>
 
             <Text
+              style={transferError ? { color: '#C2410C' } : undefined}
               className={`mt-4 mb-4 text-center text-[12px] ${
-                transferError ? 'text-[#B85318] font-semibold' : 'text-warm-gray'
+                transferError ? 'font-semibold' : 'text-warm-gray'
               }`}
             >
               {transferError ??
@@ -633,6 +669,7 @@ export default function WalletsScreen() {
             </Text>
 
             <Pressable
+              accessibilityRole="button"
               onPress={handleTransfer}
               className="bg-charcoal rounded-full h-[52px] items-center justify-center active:opacity-85"
             >
